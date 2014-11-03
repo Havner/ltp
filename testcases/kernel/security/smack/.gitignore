@@ -1,2 +1,8 @@
 /smack_notroot
 /smack_set_socket_labels
+/smack_caps
+/smack_common.h
+/smack_onlycap
+/smack_rule_simple
+/smack_simple
+/smack_transmute

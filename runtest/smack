@@ -1,3 +1,9 @@
+smack_simple		smack_simple
+smack_caps		smack_caps
+smack_rule_simple	smack_rule_simple
+smack_onlycap		smack_onlycap
+smack_transmute		smack_transmute
+
 smack_set_ambient	smack_set_ambient.sh
 smack_set_current	smack_set_current.sh
 smack_set_doi		smack_set_doi.sh
