@@ -1,0 +1,14 @@
+1. Compile with:
+cd ltp/testcases/kernel/security/smack/ns
+make
+
+2. Run all tests (must be root):
+./smack_ns_run_all.sh
+
+3. Run specific test (must be root):
+./smack_ns_run.sh <test case binray>
+
+
+NOTES:
+1. During some tests, permissions of /smack/* files are changed to 0666.
+   If the test exits normally, they are reverted.
