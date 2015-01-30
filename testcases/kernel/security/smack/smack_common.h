@@ -272,6 +272,33 @@ static inline int smack_set_fd_label(int fd, const char *label,
 }
 
 /*
+ * Get SMACK label of a file descriptor.
+ * Returns 0 on success.
+ */
+static inline int smack_get_fd_label(int fd,  char **label,
+				     enum smack_label_type label_type)
+{
+	char value[SMACK_LABEL_MAX_LEN + 1];
+	int ret;
+	const char* xattr_name;
+
+	xattr_name = smack_xattr_name(label_type);
+	ret = fgetxattr(fd, xattr_name, value, SMACK_LABEL_MAX_LEN + 1);
+
+	if (ret == -1) {
+		if (errno == ENODATA) {
+			*label = NULL;
+			return 0;
+		}
+		return -1;
+	}
+
+	value[ret] = '\0';
+	*label = strdup(value);
+	return 0;
+}
+
+/*
  * Set SMACK label of a calling process.
  * Returns 0 on success.
  */

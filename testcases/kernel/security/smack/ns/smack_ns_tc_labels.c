@@ -28,6 +28,9 @@
  *  * smack_setprocattr
  *  * smack_getprocattr
  *
+ * This test case manipulates files' and preocesses' labels, taking into account
+ * labels mapping inside a Smack namespace.
+ *
  * Author: Michal Witanowski <m.witanowski@samsung.com>
  */
 

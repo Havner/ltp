@@ -3,3 +3,12 @@
 /smack_ns_tc_rules
 /smack_ns_tc_default_rules
 /smack_ns_tc_onlycap
+/smack_ns_tc_file_access
+/smack_ns_tc_inode
+/smack_ns_tc_lock
+/smack_ns_tc_transmute
+/smack_ns_tc_mmap
+/smack_ns_tc_setns
+/smack_ns_tc_signal
+/smack_ns_tc_labels_map
+/smack_ns_tc_uds

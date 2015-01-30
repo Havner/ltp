@@ -19,9 +19,8 @@
 /*
  * Smack namespace - test case "onlycap" - tests /smack/onlycap interface
  *
- * Triggers following LSM hooks:
- *  * smack_sb_kern_mount
- *  * smack_sb_copy_data
+ * This test case verifies Smack's onlycap interface when used inside and outside
+ * a Smack namespace.
  *
  * Author: Michal Witanowski <m.witanowski@samsung.com>
  */

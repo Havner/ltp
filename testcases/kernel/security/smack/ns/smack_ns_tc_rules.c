@@ -21,6 +21,12 @@
  * * Smack rules
  * * smackfs interface
  *
+ * This test case verifies Smack rules manipulations with Smack namespaces.
+ * It covers:
+ * * setting rules inside / outside namespace
+ * * checking access after the rules are applies
+ * * usage of unmapped labels
+ *
  * Author: Michal Witanowski <m.witanowski@samsung.com>
  */
 

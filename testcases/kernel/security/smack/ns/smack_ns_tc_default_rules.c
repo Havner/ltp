@@ -21,6 +21,13 @@
  * * smack rules
  * * smackfs interface
  *
+ * This test case verifies behavior of Smack namespaces, when default Smack
+ * labels ("_", "*", "^", "@") are being mapped.
+ * Mapping a default label into an ordinary one (a string) inside a namespace
+ * will make default rules connected with the label no longer valid.
+ * And vice versa, mapping an ordinary label into default one inside a NS
+ * will make the label gaining additional rules.
+ *
  * Author: Michal Witanowski <m.witanowski@samsung.com>
  */
 
