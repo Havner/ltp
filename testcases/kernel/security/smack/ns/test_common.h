@@ -85,10 +85,11 @@ extern int test_fails;
 // TODO: use "tst_resm" when migrated to LTP
 #define TEST_ERROR(...)	\
 	do {								      \
-		char buf[1024];						      \
-		snprintf(buf, 1024, __VA_ARGS__);			      \
+		char test_error_buf[1024];				      \
+		snprintf(test_error_buf, 1024, __VA_ARGS__);		      \
 		printf(ANSI_COLOR_RED "%d: [FAIL] %s:%d: %s" ANSI_COLOR_RESET \
-		       "\n", getpid(), __FILE__, __LINE__, buf);	      \
+		       "\n", getpid(), __FILE__, __LINE__, test_error_buf);   \
+		fflush(stdout);						      \
 		test_fails++;						      \
 	} while(0)
 

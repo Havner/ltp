@@ -560,6 +560,57 @@ static inline int smack_get_onlycap(char** label)
 }
 
 /*
+ * Change Smack's "ambient" label. Return 0 on success.
+ */
+static inline int smack_set_ambient(const char* label)
+{
+	int fd;
+	fd = open(SMACK_MNT_PATH "ambient", O_WRONLY);
+	if (fd == -1)
+		return -1;
+
+	if (write(fd, label, strlen(label)) == -1) {
+		close(fd);
+		return -1;
+	}
+
+	close(fd);
+	return 0;
+}
+
+/*
+ * Get Smack's "ambient" label. Return 0 on success.
+ */
+static inline int smack_get_ambient(char** label)
+{
+	int fd, ret;
+
+	fd = open(SMACK_MNT_PATH "ambient", O_RDONLY);
+	if (fd == -1) {
+		*label = NULL;
+		return -1;
+	}
+
+	*label = malloc(SMACK_LABEL_MAX_LEN + 1);
+	if (*label == NULL) {
+		return -1;
+	}
+
+	ret = read(fd, *label, SMACK_LABEL_MAX_LEN);
+	if (ret == -1) {
+		close(fd);
+		free(*label);
+		*label = NULL;
+		return -1;
+	}
+
+	(*label)[ret] = '\0';
+
+	close(fd);
+	return 0;
+}
+
+/*
  * Map a Smack label. Works only if LSM namespaces is enabled in kernel.
  */
 static inline int smack_map_label(pid_t pid, const char *label,
