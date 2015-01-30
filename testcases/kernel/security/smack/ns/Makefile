@@ -20,20 +20,27 @@
 ## Author: Michal Witanowski <m.witanowski@samsung.com>
 ################################################################################
 
-CC=gcc
-CFLAGS=-Wall -O0 -g
-TEST_CASES=$(patsubst %.c,%,$(wildcard smack_ns_tc_*.c))
+top_srcdir		?= ../../../../..
 
-all: smack_ns_launch $(TEST_CASES)
+include $(top_srcdir)/include/mk/testcases.mk
 
-launch: smack_ns_launch.c common.h ../smack_common.h
-	$(CC) $(CFLAGS) smack_ns_launch.c -o smack_ns_launch
+INSTALL_TARGETS	:= *.sh
+INSTALL_TARGETS	+= smack_ns_tc_*
+INSTALL_TARGETS	+= mount_test.img
+
+LDLIBS		+= -lcap
+TEST_CASES	:= $(patsubst $(abs_srcdir)/%.c,%,$(wildcard $(abs_srcdir)/smack_ns_tc_*.c))
+MAKE_TARGETS	:= smack_ns_launch
+MAKE_TARGETS	+= $(TEST_CASES)
+RM		+= -r
+
+smack_ns_launch: smack_ns_launch.c common.h ../smack_common.h
+	$(CC) $(CFLAGS) $< -o $@
 
 test_common.o: test_common.c test_common.h common.h ../smack_common.h
-	$(CC) $(CFLAGS) -c test_common.c -c
+	$(CC) $(CFLAGS) -c test_common.c -o $@
 
-$(TEST_CASES): test_common.o
-	$(CC) $(CFLAGS) $@.c test_common.o -o $@
+smack_ns_tc_%: smack_ns_tc_%.c test_common.o
+	$(CC) $(CFLAGS) $< test_common.o -o $@
 
-clean:
-	rm -f smack_ns_launch $(TEST_CASES) test_common.o
+include $(top_srcdir)/include/mk/generic_leaf_target.mk

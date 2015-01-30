@@ -14,4 +14,4 @@ LDLIBS			:= -ldl -lltp -lcap
 
 INSTALL_TARGETS		:= *.sh
 
-include $(top_srcdir)/include/mk/generic_leaf_target.mk
+include $(top_srcdir)/include/mk/generic_trunk_target.mk
