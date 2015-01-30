@@ -1,1 +1,5 @@
 /smack_ns_launch
+/smack_ns_tc_labels
+/smack_ns_tc_rules
+/smack_ns_tc_default_rules
+/smack_ns_tc_onlycap

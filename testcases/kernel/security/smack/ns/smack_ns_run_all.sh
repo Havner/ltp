@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 #
 #   Copyright (C) 2014 Samsung Electronics Co.
 #
@@ -27,16 +27,5 @@ if [[ $EUID -ne 0 ]]; then
 	exit 1
 fi
 
-echo "Running test: $1..."
-
-# root / fake root
-./smack_ns_launch --uid=0 $1
-./smack_ns_launch -I --uid=1000 --mapped-uid=0 $1
-./smack_ns_launch -S --uid=0 $1
-./smack_ns_launch -IS --uid=1000 --mapped-uid=0 $1
-
-# non root
-./smack_ns_launch --uid=1000 $1
-./smack_ns_launch -I --uid=1000 --mapped-uid=5000 $1
-./smack_ns_launch -S --uid=1000 $1
-./smack_ns_launch -IS --uid=1000 --mapped-uid=5000 $1
+# run all test cases
+find . ! -name '*.c' -name 'smack_ns_tc_*' | xargs -L1 ./smack_ns_run.sh

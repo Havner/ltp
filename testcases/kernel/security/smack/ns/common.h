@@ -36,6 +36,8 @@
 #define TEST_ENV_USER_NS	(1 << 0)
 #define TEST_ENV_SMACK_NS	(1 << 1)
 #define TEST_ENV_NON_ROOT	(1 << 2)
+#define TOTAL_TEST_ENVS		((TEST_ENV_USER_NS | TEST_ENV_SMACK_NS \
+				| TEST_ENV_NON_ROOT) + 1)
 
 /* test case exit codes */
 #define TEST_EXIT_USAGE	1

@@ -22,11 +22,18 @@
 
 CC=gcc
 CFLAGS=-Wall -O0 -g
+TEST_CASES=$(patsubst %.c,%,$(wildcard smack_ns_tc_*.c))
 
-all: smack_ns_launch
+all: smack_ns_launch $(TEST_CASES)
 
-launch: smack_ns_launch.c common.h
+launch: smack_ns_launch.c common.h ../smack_common.h
 	$(CC) $(CFLAGS) smack_ns_launch.c -o smack_ns_launch
 
+test_common.o: test_common.c test_common.h common.h ../smack_common.h
+	$(CC) $(CFLAGS) -c test_common.c -c
+
+$(TEST_CASES): test_common.o
+	$(CC) $(CFLAGS) $@.c test_common.o -o $@
+
 clean:
-	rm -f smack_ns_launch
+	rm -f smack_ns_launch $(TEST_CASES) test_common.o
