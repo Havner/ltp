@@ -72,11 +72,12 @@ static inline int safe_strcmp(const char *a, const char *b)
 	return strcmp(a, b);
 }
 
-#define INSIDE_NS_IDENTIFIER "inside"
-#define OUTSIDE_NS_IDENTIFIER "outside"
+#define ID_INSIDE_NS "id-inside"
+#define ID_OUTSIDE_NS "id-outside"
 
+#define INSIDE_PROC_LABEL "inside"
+#define OUTSIDE_PROC_LABEL "outside"
+#define SHARED_OBJECT_LABEL "shared"
 #define MAPPED_LABEL_PREFIX "n_"
-#define INSIDE_NS_PROC_LABEL "inside"
-#define OUTSIDE_NS_PROC_LABEL "outside"
 
 #endif // SMACK_NAMESPACE_FRAMEWORK_COMMON_H

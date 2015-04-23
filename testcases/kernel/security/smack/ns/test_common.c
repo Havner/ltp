@@ -19,7 +19,8 @@
 /*
  * Smack namespaces - common test case routines
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #include <errno.h>
@@ -34,7 +35,13 @@
 #include <signal.h>
 #include "test_common.h"
 
+
 #define SMACK_IFACE_PATH_LEN 256
+
+#define TEST_PREP_MARKER  INT8_MIN+0
+#define TEST_START_MARKER INT8_MIN+1
+#define TEST_END_MARKER   INT8_MIN+2
+
 
 static int fd_in = STDIN_FILENO;
 static int fd_out = STDERR_FILENO;
@@ -54,14 +61,33 @@ struct smackfs_interface {
 };
 
 static struct smackfs_interface *smackfs_interfaces = NULL;
+static char *old_ambient = NULL;
+
+/*
+ * Rules and mappings builtin in the test framework.
+ * The upper framework that runs the test binary already adds
+ * few, like inside, outside labels mappings, mapped shared label
+ * and permissions to it.
+ */
+// TODO: do we need those rules?
+static const struct test_smack_rule_desc builtin_rules[] = {
+	{AMBIENT_OBJECT_LABEL, INSIDE_PROC_LABEL, "w", 1},
+	{AMBIENT_OBJECT_LABEL, OUTSIDE_PROC_LABEL, "w", 1},
+	{NULL}
+};
+static const struct test_smack_mapping_desc builtin_mappings[] = {
+	{AMBIENT_OBJECT_LABEL, MAPPED_LABEL_PREFIX AMBIENT_OBJECT_LABEL, 1},
+	{NULL}
+};
 
 /*
  * Arrays of rules, created files and directories are remembered
  * so they can be cleaned automatically at the exit.
  */
-static const struct test_smack_rule_desc *test_rules = NULL;
-static const struct test_file_desc *test_dirs = NULL;
-static const struct test_file_desc *test_files = NULL;
+static const struct test_smack_rule_desc *saved_test_rules = NULL;
+static const struct test_dir_desc *saved_test_dirs = NULL;
+static const struct test_file_desc *saved_test_files = NULL;
+
 
 /*
  * Synchronize two processes. The loc_id parameter is expected to be the same
@@ -78,18 +104,18 @@ void test_sync_ex(char loc_id, const void *write_data, size_t write_data_size,
 	char msg;
 
 	if (!inside_ns) {
-		// trigger B
+		/* trigger B */
 		msg = loc_id;
 		if (write(fd_out, &msg, 1) == -1)
 			ERR_EXIT("write");
-		// write data
+		/* write data */
 		if (write_data_size > 0)
 			if (write(fd_out, write_data, write_data_size)
 			    != (ssize_t)write_data_size)
 				ERR_EXIT("write");
 	}
 
-	// wait for B
+	/* wait for B */
 	if ((bytes = read(fd_in, &msg, 1)) == -1)
 		ERR_EXIT("read");
 	if (bytes == 0) {
@@ -97,11 +123,11 @@ void test_sync_ex(char loc_id, const void *write_data, size_t write_data_size,
 		exit(TEST_EXIT_IPC);
 	}
 	if (msg != loc_id) {
-		// this should never happen if code is written well
+		/* this should never happen if code is written well */
 		printf("%d: IPC error, check code\n", getpid());
 		exit(TEST_EXIT_IPC);
 	}
-	// read data
+	/* read data */
 	if (read_data_size > 0) {
 		if ((bytes = read(fd_in, read_data, read_data_size)) == -1)
 			ERR_EXIT("read");
@@ -112,11 +138,11 @@ void test_sync_ex(char loc_id, const void *write_data, size_t write_data_size,
 	}
 
 	if (inside_ns) {
-		// trigger B
+		/* trigger B */
 		msg = loc_id;
 		if (write(fd_out, &msg, 1) == -1)
 			ERR_EXIT("write");
-		// write data
+		/* write data */
 		if (write_data_size > 0)
 			if (write(fd_out, write_data, write_data_size)
 			    != (ssize_t)write_data_size)
@@ -129,87 +155,174 @@ void test_sync(char loc_id)
 	test_sync_ex(loc_id, NULL, 0, NULL, 0);
 }
 
-void init_test_resources(const struct test_smack_rule_desc *rules,
-			 const struct test_smack_mapping_desc *labels_map,
-			 const struct test_file_desc *dirs,
-			 const struct test_file_desc *files)
+/*
+ * Rules: set one, set list, reset list.
+ */
+void set_smack_rule(const struct test_smack_rule_desc *rule)
 {
 	int ret;
-	test_rules = rules;
-	test_dirs = dirs;
-	test_files = files;
 
-	if (rules != NULL) {
-		while (rules->subject && rules->object && rules->access) {
-			ret = smack_set_rule(rules->subject, rules->object,
-					     rules->access);
-			TEST_CHECK(ret == 0, "Failed to set smack acces rule "
-				   "(%s %s %s): %s",
-				   rules->subject, rules->object, rules->access,
-				   strerror(errno));
-			rules++;
-		}
-	}
+	ret = smack_set_rule(rule->subject, rule->object,
+	                     rule->access);
+	TEST_CHECK(ret == 0, "Failed to set smack acces rule "
+	           "(%s %s %s): %s",
+	           rule->subject, rule->object, rule->access,
+	           strerror(errno));
+}
 
-	if ((labels_map != NULL) && (env_id & TEST_ENV_SMACK_NS)) {
-		while (labels_map->original && labels_map->mapped) {
-			ret = smack_map_label(sibling_pid, labels_map->original,
-					      labels_map->mapped);
-			TEST_CHECK(ret == 0, "Failed to set smack label mapping"
-				   " (%s -> %s): %s",
-				   labels_map->original, labels_map->mapped,
-				   strerror(errno));
-			labels_map++;
-		}
-	}
-
-	if (dirs != NULL) {
-		while (dirs->path) {
-			ret = create_dir_labeled(dirs->path, dirs->mode,
-						 dirs->label);
-			TEST_CHECK(ret == 0,
-				   "Failed to create directory (%s): %s",
-				   dirs->path, strerror(errno));
-			dirs++;
-		}
-	}
-
-	if (files != NULL) {
-		while (files->path) {
-			ret = create_file_labeled(files->path, files->mode,
-						  files->label);
-			TEST_CHECK(ret == 0, "Failed to create file (%s): %s",
-				   files->path, strerror(errno));
-			files++;
-		}
+static void set_smack_rules(const struct test_smack_rule_desc *rules)
+{
+	while (rules->subject && rules->object && rules->access) {
+		if (rules->startup == automatic)
+			set_smack_rule(rules);
+		rules++;
 	}
 }
 
-// TODO: this could be done via recursive ./tmp dir removal
-void cleanup_test_resources(void)
+static void reset_smack_rules(const struct test_smack_rule_desc *rules)
 {
-	if (test_rules != NULL) {
-		while (test_rules->subject && test_rules->object
-		       && test_rules->access) {
-			smack_set_rule(test_rules->subject, test_rules->object,
-				       "-");
-			test_rules++;
-		}
+	while (rules->subject && rules->object && rules->access) {
+		smack_set_rule(rules->subject, rules->object, "-");
+		rules++;
 	}
+}
 
-	if (test_dirs != NULL) {
-		while (test_dirs->path) {
-			remove(test_dirs->path);
-			test_dirs++;
-		}
-	}
+/*
+ * Mappings: set one, set list, (no reset).
+ */
+void set_smack_mapping(const struct test_smack_mapping_desc *mapping)
+{
+	int ret;
 
-	if (test_files != NULL) {
-		while (test_files->path) {
-			remove(test_files->path);
-			test_files++;
-		}
+	ret = smack_map_label(sibling_pid, mapping->original, mapping->mapped);
+	TEST_CHECK(ret == 0, "Failed to set smack label mapping"
+	           " (%s -> %s): %s",
+	           mapping->original, mapping->mapped,
+	           strerror(errno));
+}
+
+static void set_smack_mappings(const struct test_smack_mapping_desc *mappings)
+{
+	while (mappings->original && mappings->mapped) {
+		if (mappings->startup == automatic)
+			set_smack_mapping(mappings);
+		mappings++;
 	}
+}
+
+/*
+ * Dirs: create one, create list, remove list.
+ */
+static void create_dir(const struct test_dir_desc *dir)
+{
+	int ret;
+
+	ret = dir_create(dir->path, dir->mode, uid, gid,
+			 dir->label_access, dir->flags);
+	TEST_CHECK(ret == 0,
+		   "Failed to create directory (%s): %s",
+		   dir->path, strerror(errno));
+}
+
+static void create_dirs(const struct test_dir_desc *dirs)
+{
+	while(dirs->path) {
+		create_dir(dirs);
+		dirs++;
+	}
+}
+
+static void remove_dirs(const struct test_dir_desc *dirs)
+{
+	const struct test_dir_desc *start = dirs;
+
+	while (dirs->path)
+		dirs++;
+	dirs--;
+
+	do {
+		remove(dirs->path);
+	} while (dirs-- != start);
+}
+
+/*
+ * Files: create one, create list, remove list.
+ */
+static void create_file(const struct test_file_desc *file)
+{
+	int ret;
+
+	ret = file_create(file->path, file->mode, uid, gid,
+			  file->type, file->label_access,
+			  file->label_exec, file->label_mmap);
+	TEST_CHECK(ret == 0, "Failed to create file (%s): %s",
+		   file->path, strerror(errno));
+}
+
+static void create_files(const struct test_file_desc *files)
+{
+	while (files->path) {
+		create_file(files);
+		files++;
+	}
+}
+
+static void remove_files(const struct test_file_desc *files)
+{
+	while (files->path) {
+		remove(files->path);
+		files++;
+	}
+}
+
+/*
+ * Group initializations.
+ */
+static void init_builtin_resources(void)
+{
+	set_smack_rules(builtin_rules);
+
+	if (env_id & TEST_ENV_SMACK_NS)
+		set_smack_mappings(builtin_mappings);
+}
+
+static void cleanup_builtin_resources(void)
+{
+	reset_smack_rules(builtin_rules);
+}
+
+void init_test_resources(const struct test_smack_rule_desc *rules,
+			 const struct test_smack_mapping_desc *mappings,
+			 const struct test_dir_desc *dirs,
+			 const struct test_file_desc *files)
+{
+	saved_test_rules = rules;
+	saved_test_dirs = dirs;
+	saved_test_files = files;
+
+	if (rules != NULL)
+		set_smack_rules(rules);
+
+	if ((mappings != NULL) && (env_id & TEST_ENV_SMACK_NS))
+		set_smack_mappings(mappings);
+
+	if (dirs != NULL)
+		create_dirs(dirs);
+
+	if (files != NULL)
+		create_files(files);
+}
+
+static void cleanup_test_resources(void)
+{
+	if (saved_test_rules != NULL)
+		reset_smack_rules(saved_test_rules);
+
+	if (saved_test_files != NULL)
+		remove_files(saved_test_files);
+
+	if (saved_test_dirs != NULL)
+		remove_dirs(saved_test_dirs);
 }
 
 /*
@@ -221,7 +334,7 @@ void cleanup_test_resources(void)
  * restore_smackfs_permissions(), which is called at the exit, will restore them
  * to previous values.
  */
-void save_smackfs_permissions(void)
+static void save_and_loosen_smackfs_permissions(void)
 {
 	DIR *dir;
 	struct dirent *ent;
@@ -263,7 +376,7 @@ void save_smackfs_permissions(void)
 	closedir(dir);
 }
 
-void restore_smackfs_permissions(void)
+static void restore_smackfs_permissions(void)
 {
 	struct smackfs_interface *next, *interface = smackfs_interfaces;
 	while (interface != NULL) {
@@ -275,26 +388,49 @@ void restore_smackfs_permissions(void)
 	smackfs_interfaces = NULL;
 }
 
-void test_on_exit(int code, void* arg)
+/*
+ * Ambient save_n_set and restore.
+ */
+static void save_and_set_ambient_label(void)
 {
-	(void)code;
-	(void)arg;
+	int ret;
 
+	ret = smack_get_ambient(&old_ambient);
+	TEST_CHECK(ret != -1, "smack_get_ambient(): %s", strerror(errno));
+	ret = smack_set_ambient(AMBIENT_OBJECT_LABEL);
+	TEST_CHECK(ret != -1, "smack_set_ambient(): %s", strerror(errno));
+}
+
+static void restore_ambient_label(void)
+{
+	if (old_ambient != NULL)
+		smack_set_ambient(old_ambient);
+}
+
+/*
+ * Exit handlers.
+ */
+static void test_on_exit(void)
+{
 	if (!inside_ns) {
 		test_cleanup();
-		restore_smackfs_permissions();
 		cleanup_test_resources();
-		smack_set_onlycap("-");
+		cleanup_builtin_resources();
+		restore_ambient_label();
+		restore_smackfs_permissions();
 	}
 }
 
-void test_signal_handler(int sig)
+static void test_signal_handler(int sig)
 {
 	printf(ANSI_COLOR_YELLOW "%d: signal received: %s\n" ANSI_COLOR_RESET,
 	       getpid(), strsignal(sig));
 	exit(TEST_EXIT_FAIL);
 }
 
+/*
+ * Main that handles both, the inside and outside cases.
+ */
 int main(int argc, char *argv[])
 {
 	int ret = 0;
@@ -314,19 +450,30 @@ int main(int argc, char *argv[])
 	if (env_id < 0 || env_id >= TOTAL_TEST_ENVS)
 		goto invalid_usage;
 
-	// register exit callback
-	on_exit(test_on_exit, NULL);
+	/* register exit callback */
+	atexit(test_on_exit);
 
-	if (strcmp(argv[1], INSIDE_NS_IDENTIFIER) == 0) {
+	if (strcmp(argv[1], ID_INSIDE_NS) == 0) {
 		printf("%d: running inside namespace\n", getpid());
 		inside_ns = 1;
+
+		test_sync(TEST_PREP_MARKER);
+
+		test_sync(TEST_START_MARKER);
 		main_inside_ns();
-	} else if (strcmp(argv[1], OUTSIDE_NS_IDENTIFIER) == 0) {
+		test_sync(TEST_END_MARKER);
+	} else if (strcmp(argv[1], ID_OUTSIDE_NS) == 0) {
 		printf("%d: running outside namespace\n", getpid());
 		umask(0);
-		save_smackfs_permissions();
 
+		test_sync(TEST_PREP_MARKER);
+		save_and_loosen_smackfs_permissions();
+		save_and_set_ambient_label();
+		init_builtin_resources();
+
+		test_sync(TEST_START_MARKER);
 		main_outside_ns();
+		test_sync(TEST_END_MARKER);
 	} else
 		goto invalid_usage;
 
@@ -341,3 +488,4 @@ invalid_usage:
 	printf("Invalid usage. Please launch via Smack namespace framework\n");
 	return TEST_EXIT_USAGE;
 }
+

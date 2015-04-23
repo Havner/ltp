@@ -22,7 +22,8 @@
  * This test case verifies Smack's onlycap interface when used inside and outside
  * a Smack namespace.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -33,10 +34,17 @@
 #include <fcntl.h>
 #include "test_common.h"
 
-static const struct test_smack_rule_desc test_rules[] =
-{
-	{"inside", "*", "rwx"}, // allow access to smackfs
-	{NULL, NULL, NULL}
+#define UNMAPPED "unmapped"
+#define OUTSIDE OUTSIDE_PROC_LABEL
+
+static const struct test_smack_rule_desc test_rules[] = {
+	{INSIDE_PROC_LABEL, "*", "rwx", 1},  /* allow access to smackfs */
+	{NULL}
+};
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{"*", "star", 1},  /* allow access to smackfs */
+	{NULL}
 };
 
 void main_inside_ns(void)
@@ -46,27 +54,36 @@ void main_inside_ns(void)
 
 	test_sync(0);
 
-	const char* expected_label1[] = {"outside", "outside", "n_outside", "n_outside",
-					 "outside", "outside", "n_outside", "n_outside" };
-	ret = smack_get_onlycap(&label);
-	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_CHECK(safe_strcmp(label, expected_label1[env_id]) == 0,
-		   strerror(errno));
-	free(label);
+	const int expected_ret[] = { 0, -1,  0, -1,
+	                            -1, -1, -1, -1};
+	ret = smack_set_onlycap(LA(OUTSIDE));
+	TEST_CHECK(ret == expected_ret[env_id], strerror(errno));
 
 	test_sync(1);
 
-
+	/* Set the onlycap, but this time properly, outside */
 
 	test_sync(2);
 
-	const char* expected_label2[] = {"unmapped", "unmapped", "?", "?",
-					 "unmapped", "unmapped", "?", "?" };
 	ret = smack_get_onlycap(&label);
 	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_CHECK(safe_strcmp(label, expected_label2[env_id]) == 0,
-		   strerror(errno));
-	free(label);
+	if (ret == 0) {
+		TEST_LABEL(label, LA(OUTSIDE));
+		free(label);
+	}
+
+	test_sync(3);
+
+	/* Set onlycap to unmapped label */
+
+	test_sync(4);
+
+	ret = smack_get_onlycap(&label);
+	TEST_CHECK(ret == 0, strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, LM(UNMAPPED, "?"));
+		free(label);
+	}
 
 	/*
 	 * try to change onlycap label
@@ -77,11 +94,12 @@ void main_inside_ns(void)
 
 	ret = smack_get_onlycap(&label);
 	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_CHECK(safe_strcmp(label, expected_label2[env_id]) == 0,
-		   strerror(errno));
-	free(label);
+	if (ret == 0) {
+		TEST_LABEL(label, LM(UNMAPPED, "?"));
+		free(label);
+	}
 
-	test_sync(3);
+	test_sync(5);
 }
 
 void main_outside_ns(void)
@@ -89,20 +107,38 @@ void main_outside_ns(void)
 	int ret;
 	char* label = NULL;
 
-	init_test_resources(test_rules, NULL, NULL, NULL);
+	init_test_resources(test_rules, test_mappings, NULL, NULL);
 
-	ret = smack_set_onlycap("outside");
+	test_sync(0);
+
+	/* Try to change onlycap to outside from the namespace */
+
+	test_sync(1);
+
+	const char *expexted_label[] = {OUTSIDE, "", OUTSIDE, "",
+	                                     "", "",      "", ""};
+	ret = smack_get_onlycap(&label);
+	TEST_CHECK(ret == 0, strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, expexted_label[env_id]);
+		free(label);
+	}
+
+	ret = smack_set_onlycap(OUTSIDE);
 	TEST_CHECK(ret == 0, strerror(errno));
 
 	ret = smack_get_onlycap(&label);
 	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_CHECK(safe_strcmp(label, "outside") == 0,
-	           strerror(errno));
-	free(label);
+	if (ret == 0) {
+		TEST_LABEL(label, OUTSIDE);
+		free(label);
+	}
 
-	test_sync(0);
-	// check in namespace
-	test_sync(1);
+	test_sync(2);
+
+	/* check in namespace */
+
+	test_sync(3);
 
 	/*
 	 * set onlycap label to unmapped label in the namespace
@@ -111,20 +147,24 @@ void main_outside_ns(void)
 	ret = smack_set_onlycap("-");
 	TEST_CHECK(ret == 0, strerror(errno));
 
-	ret = smack_set_self_label("unmapped");
+	ret = smack_set_self_label(UNMAPPED);
 	TEST_CHECK(ret == 0, strerror(errno));
 
-	ret = smack_set_onlycap("unmapped");
+	ret = smack_set_onlycap(UNMAPPED);
 	TEST_CHECK(ret == 0, strerror(errno));
 
 	ret = smack_get_onlycap(&label);
 	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_CHECK(safe_strcmp(label, "unmapped") == 0, strerror(errno));
-	free(label);
+	if (ret == 0) {
+		TEST_LABEL(label, UNMAPPED);
+		free(label);
+	}
 
-	test_sync(2);
-	// check in namespace
-	test_sync(3);
+	test_sync(4);
+
+	/* check in namespace */
+
+	test_sync(5);
 }
 
 void test_cleanup(void)
@@ -132,12 +172,18 @@ void test_cleanup(void)
 	int ret;
 	char* label = NULL;
 
-	// reset "onlycap" label
+	/* reset "onlycap" label */
 	ret = smack_set_onlycap("-");
 	TEST_CHECK(ret == 0, strerror(errno));
 
+	/*
+	 * Make sure we did, if not, the system might become
+	 * impossible to administer.
+	 */
 	ret = smack_get_onlycap(&label);
 	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_CHECK(strcmp(label, "") == 0, strerror(errno));
-	free(label);
+	if (ret == 0) {
+		TEST_LABEL(label, "");
+		free(label);
+	}
 }

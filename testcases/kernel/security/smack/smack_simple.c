@@ -33,8 +33,7 @@
 #include "smack_common.h"
 
 #define CLEANUP cleanup
-
-char *TCID = "smack_simple";
+const char *TCID = "smack_simple";
 int TST_TOTAL = 1;
 
 #define TEST_FILE_PATH "test_file1"
@@ -54,10 +53,10 @@ static void setup(void)
 
 int main(int argc, char *argv[])
 {
-	(void)argc;
-	(void)argv;
+	UNUSED(argc);
+	UNUSED(argv);
 
-	int i;
+	size_t i;
 	char* ret = NULL;
 	int label_types[] = {SMACK_LABEL_ACCESS, SMACK_LABEL_EXEC,
 			     SMACK_LABEL_MMAP, SMACK_LABEL_TRANSMUTE};
@@ -69,7 +68,7 @@ int main(int argc, char *argv[])
 		tst_brkm(TCONF, NULL, "Smack is not enabled");
 	setup();
 
-	// set current process label
+	/* set current process label */
 	if (smack_set_self_label(PROC_LABEL1))
 		tst_resm(TFAIL, "Failed to set current process label");
 	if (smack_get_process_label(getpid(), &ret))
@@ -80,18 +79,16 @@ int main(int argc, char *argv[])
 		tst_resm(TFAIL, "Process has invalid label: %s (should be: %s)",
 			 ret, PROC_LABEL1);
 
-	// set file lables
+	/* set file labels */
 	for (i = 0; i < ARRAY_SIZE(label_types); ++i) {
 		if (smack_set_file_label(TEST_FILE_PATH, label_values[i],
-					 label_types[i], 0)
-		    < 0)
+					 label_types[i], 0) < 0)
 			tst_resm(TFAIL, "Failed to set %s label for file: %s ",
 				 smack_xattr_name(label_types[i]),
 				 TEST_FILE_PATH);
 
 		if (smack_get_file_label(TEST_FILE_PATH, &ret, label_types[i],
-					 0)
-		    != 0)
+					 0) != 0)
 			tst_resm(TFAIL, "Failed to get %s label for file: %s ",
 				 smack_xattr_name(label_types[i]),
 				 TEST_FILE_PATH);

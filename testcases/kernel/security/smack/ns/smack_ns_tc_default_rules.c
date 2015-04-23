@@ -28,7 +28,8 @@
  * And vice versa, mapping an ordinary label into default one inside a NS
  * will make the label gaining additional rules.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -39,6 +40,34 @@
 #include <fcntl.h>
 #include <string.h>
 #include "test_common.h"
+
+#define INSIDE        INSIDE_PROC_LABEL
+#define LABEL1        "label1"
+#define LABEL2        "label2"
+#define WILL_BE_FLOOR "will_be_floor"
+#define WILL_BE_STAR  "will_be_star"
+#define WILL_BE_HAT   "will_be_hat"
+#define WILL_BE_AT    "will_be_at"
+
+
+static const struct test_smack_rule_desc test_rules[] = {
+	{INSIDE,       "*",          "rw", automatic}, /* 0: allow the namespace access the smackfs */
+	{LABEL2,       WILL_BE_FLOOR, "w", manual},    /* 1: scenario 2 */
+	{WILL_BE_STAR, LABEL2,        "r", manual},    /* 2: scenario 2 */
+	{WILL_BE_HAT,  LABEL2,        "w", manual},    /* 3: scenario 2 */
+	{NULL}
+};
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL1, MAPPED_LABEL_PREFIX LABEL1, automatic}, /* 0 */
+	{LABEL2, MAPPED_LABEL_PREFIX LABEL2, automatic}, /* 1 */
+	{"*", "star", automatic},            /* 2: allow the namespace access the smackfs */
+	{WILL_BE_FLOOR, "_", manual},        /* 3: scenario 1 */
+	{WILL_BE_STAR, "*", manual},         /* 4: scenario 1 */
+	{WILL_BE_HAT, "^", manual},          /* 5: scenario 1 */
+	{WILL_BE_AT, "@", manual},           /* 6: scenario 1 */
+	{NULL}
+};
 
 void main_inside_ns(void)
 {
@@ -51,24 +80,29 @@ void main_inside_ns(void)
 	 * At this point default rules are unmapped (except '_')
 	 */
 	if (env_id & TEST_ENV_SMACK_NS) {
-		ret = smack_get_access("*", "n_l1");
+		ret = smack_get_access("_", LA(LABEL1));
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
-		ret = smack_get_access("n_l1", "*");
-		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
-
-		ret = smack_get_access("^", "n_l1");
-		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
-		ret = smack_get_access("n_l1", "^");
+		ret = smack_get_access(LA(LABEL1), "_");
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
 
-		ret = smack_get_access("@", "n_l1");
+		ret = smack_get_access("*", LA(LABEL1));
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
-		ret = smack_get_access("n_l1", "@");
+		ret = smack_get_access(LA(LABEL1), "*");
+		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
+
+		ret = smack_get_access("^", LA(LABEL1));
+		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL1), "^");
+		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
+
+		ret = smack_get_access("@", LA(LABEL1));
+		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL1), "@");
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
 	}
 
 	test_sync(1);
-	// mapping default labels occurs here
+	/* mapping default labels occurs here */
 	test_sync(2);
 
 	/*
@@ -77,32 +111,43 @@ void main_inside_ns(void)
 	 * so they will behave as expected.
 	 */
 	if (env_id & TEST_ENV_SMACK_NS) {
-		ret = smack_get_access("*", "n_l1");
+		ret = smack_get_access(LA(LABEL1), "_");
+		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_EXE),
+			   "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL2), "_");
+		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_EXE),
+			   "ret = %d, %s", ret, strerror(errno));
+
+		ret = smack_get_access("*", LA(LABEL1));
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
 		ret = smack_get_access("*", "_");
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL1), "*");
+		TEST_CHECK(ret == ACCESS_FULL,
+		           "ret = %d, %s", ret, strerror(errno));
 
-		ret = smack_get_access("^", "n_l1");
-		TEST_CHECK(ret == (ACCESS_READ | ACCESS_EXE | ACCESS_LOCK),
+		ret = smack_get_access("^", LA(LABEL1));
+		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_EXE),
 			   "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL1), "^");
+		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
 
-		ret = smack_get_access("n_l1", "_");
-		TEST_CHECK(ret == (ACCESS_READ | ACCESS_EXE | ACCESS_LOCK),
-			   "ret = %d, %s", ret, strerror(errno));
-		ret = smack_get_access("n_l2", "_");
-		TEST_CHECK(ret == (ACCESS_READ | ACCESS_EXE | ACCESS_LOCK),
-			   "ret = %d, %s", ret, strerror(errno));
-
-		ret = smack_get_access("n_l1", "*");
-		TEST_CHECK(
-			ret == (ACCESS_READ | ACCESS_WRITE | ACCESS_EXE
-				| ACCESS_APPEND | ACCESS_TRANS | ACCESS_LOCK
-				| ACCESS_BRINGUP),
-			"ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access("@", LA(LABEL1));
+		TEST_CHECK(ret == ACCESS_FULL,
+		           "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL1), "@");
+		TEST_CHECK(ret == ACCESS_FULL,
+		           "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access("@", LA(LABEL2));
+		TEST_CHECK(ret == ACCESS_FULL,
+		           "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL2), "@");
+		TEST_CHECK(ret == ACCESS_FULL,
+		           "ret = %d, %s", ret, strerror(errno));
 	}
 
 	test_sync(3);
-	// load rules for default labels
+	/* load rules for default labels */
 	test_sync(4);
 
 	/*
@@ -110,26 +155,22 @@ void main_inside_ns(void)
 	 * At this point default labels gained additional accesses.
 	 */
 	if (env_id & TEST_ENV_SMACK_NS) {
-		ret = smack_get_access("*", "n_l2");
+		ret = smack_get_access(LA(LABEL1), "_");
+		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_EXE),
+			   "ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access(LA(LABEL2), "_");
+		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_WRITE | ACCESS_EXE),
+		           "ret = %d, %s", ret, strerror(errno));
+
+		ret = smack_get_access("*", LA(LABEL2));
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
 
-		ret = smack_get_access("^", "n_l1");
-		TEST_CHECK(ret == (ACCESS_READ | ACCESS_EXE | ACCESS_LOCK),
+		ret = smack_get_access("^", LA(LABEL1));
+		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_EXE),
 			   "ret = %d, %s", ret, strerror(errno));
-		ret = smack_get_access("^", "n_l2");
-		TEST_CHECK(
-			ret == (ACCESS_READ | ACCESS_WRITE | ACCESS_EXE
-				| ACCESS_LOCK),
-			"ret = %d, %s", ret, strerror(errno));
-
-		ret = smack_get_access("n_l1", "_");
-		TEST_CHECK(ret == (ACCESS_READ | ACCESS_EXE | ACCESS_LOCK),
-			   "ret = %d, %s", ret, strerror(errno));
-		ret = smack_get_access("n_l2", "_");
-		TEST_CHECK(
-			ret == (ACCESS_READ | ACCESS_WRITE | ACCESS_EXE
-				| ACCESS_LOCK),
-			"ret = %d, %s", ret, strerror(errno));
+		ret = smack_get_access("^", LA(LABEL2));
+		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_WRITE | ACCESS_EXE),
+		           "ret = %d, %s", ret, strerror(errno));
 	}
 
 	test_sync(5);
@@ -137,53 +178,34 @@ void main_inside_ns(void)
 
 void main_outside_ns(void)
 {
-	int ret;
-
-	// allow access to smackfs
-	ret = smack_set_rule("inside", "*", "rwx");
-	TEST_CHECK(ret == 0, strerror(errno));
+	init_test_resources(test_rules, test_mappings, NULL, NULL);
 
 	test_sync(0);
 
-	// Scenario 1
+	/* Scenario 1 */
 
 	test_sync(1);
 	if (env_id & TEST_ENV_SMACK_NS) {
-		ret = smack_map_label(sibling_pid, "will_be_star", "*");
-		TEST_CHECK(ret == 0, strerror(errno));
-		ret = smack_map_label(sibling_pid, "will_be_hat", "^");
-		TEST_CHECK(ret == 0, strerror(errno));
-		ret = smack_map_label(sibling_pid, "will_be_at", "@");
-		TEST_CHECK(ret == 0, strerror(errno));
+		set_smack_mapping(&test_mappings[3]);
+		set_smack_mapping(&test_mappings[4]);
+		set_smack_mapping(&test_mappings[5]);
+		set_smack_mapping(&test_mappings[6]);
 	}
 	test_sync(2);
 
-	// Scenario 2
+	/* Scenario 2 */
 
 	test_sync(3);
-	ret = smack_set_rule("l2", "will_be_floor", "w");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("will_be_star", "l2", "r");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("will_be_hat", "l2", "w");
-	TEST_CHECK(ret == 0, strerror(errno));
+	set_smack_rule(&test_rules[1]);
+	set_smack_rule(&test_rules[2]);
+	set_smack_rule(&test_rules[3]);
 	test_sync(4);
 
-	// Scenario 3
+	/* Scenario 3 */
 
 	test_sync(5);
 }
 
 void test_cleanup(void)
 {
-	int ret;
-
-	ret = smack_set_rule("l2", "will_be_floor", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("will_be_star", "l2", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("will_be_hat", "l2", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("inside", "*", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
 }

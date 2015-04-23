@@ -17,11 +17,12 @@
  */
 
 /*
- * Smack namespace - test case "CIPSO ambient"
+ * Smack namespace - test case "ambient"
  *
  * This testcase verifies behavior of "ambient" smackfs interfaces.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -33,6 +34,21 @@
 #include <string.h>
 #include "test_common.h"
 
+#define LABEL    "label"
+#define UNMAPPED "unmapped"
+
+static const struct test_smack_rule_desc test_rules[] = {
+	{INSIDE_PROC_LABEL, "*", "rwx", automatic},    /* allow access to smackfs */
+	{NULL}
+};
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{"*", "star", automatic},    /* allow access to smackfs */
+	{LABEL, MAPPED_LABEL_PREFIX LABEL, automatic},
+	{NULL}
+};
+
+
 void main_inside_ns(void)
 {
 	int ret;
@@ -43,54 +59,50 @@ void main_inside_ns(void)
 	/*
 	 * Verify "ambient" label
 	 */
-	const char* exp_ambient_label1[] = {"l1", "l1", "n_l1", "n_l1",
-					    "l1", "l1", "n_l1", "n_l1"};
 	ret = smack_get_ambient(&label);
-	TEST_CHECK(ret != -1, "smack_get_ambient(): %s", strerror(errno));
-	if (ret != -1) {
-		TEST_CHECK(strcmp(label, exp_ambient_label1[env_id]) == 0,
-			   "Invalid ambient label. Actual = %s, "
-			   "expected = %s", label, exp_ambient_label1[env_id]);
+	TEST_CHECK(ret == 0, "smack_get_ambient(): %s", strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, LA(LABEL));
+		free(label);
 	}
 
 	test_sync(1);
+
+	/* change ambient label */
 
 	test_sync(2);
 
 	/*
 	 * Verify unmapped label
 	 */
-	const char* exp_ambient_label2[] = {"@", "@", "?", "?",
-					    "@", "@", "?", "?"};
 	ret = smack_get_ambient(&label);
-	TEST_CHECK(ret != -1, "smack_get_ambient(): %s", strerror(errno));
-	if (ret != -1) {
-		TEST_CHECK(strcmp(label, exp_ambient_label2[env_id]) == 0,
-			   "Invalid ambient label. Actual = %s, "
-			   "expected = %s", label, exp_ambient_label2[env_id]);
+	TEST_CHECK(ret == 0, "smack_get_ambient(): %s", strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, LM(UNMAPPED, "?"));
+		free(label);
 	}
 
 	/*
-	 * Try to set unmapped label
+	 * Try to set mapped label
 	 */
-	int exp_ret1[] = { 0, -1, -1, -1,
+	int exp_ret1[] = { 0, -1,  0, -1,
 			  -1, -1, -1, -1 };
-	int exp_errno1[] = {0,     EPERM, EBADR, EPERM,
+	int exp_errno1[] = {0,     EPERM,     0, EPERM,
 			    EPERM, EPERM, EPERM, EPERM };
 	errno = 0;
-	ret = smack_set_ambient("l1");
+	ret = smack_set_ambient(LA(LABEL));
 	TEST_CHECK(ret == exp_ret1[env_id] && errno == exp_errno1[env_id],
 		   "smack_set_ambient(): %s", strerror(errno));
 
 	/*
 	 * Try to set unmapped label
 	 */
-	int exp_ret2[] = { 0, -1,  0, -1,
+	int exp_ret2[] = { 0, -1, -1, -1,
 			  -1, -1, -1, -1 };
-	int exp_errno2[] = {0,     EPERM, 0,     EPERM,
+	int exp_errno2[] = {0,     EPERM, EBADR, EPERM,
 			    EPERM, EPERM, EPERM, EPERM };
 	errno = 0;
-	ret = smack_set_ambient("n_l1");
+	ret = smack_set_ambient(UNMAPPED);
 	TEST_CHECK(ret == exp_ret2[env_id] && errno == exp_errno2[env_id],
 		   "smack_set_ambient(): %s", strerror(errno));
 
@@ -101,31 +113,27 @@ void main_outside_ns(void)
 {
 	int ret;
 
-	// allow access to smackfs
-	ret = smack_set_rule("inside", "*", "rwx");
-	TEST_CHECK(ret == 0, strerror(errno));
+	init_test_resources(test_rules, test_mappings, NULL, NULL);
 
-	ret = smack_set_ambient("l1");
+	ret = smack_set_ambient(LABEL);
 	TEST_CHECK(ret != -1, "smack_set_ambient(): %s", strerror(errno));
 
 	test_sync(0);
 
-	// check label in NS
+	/* check label in NS */
 
 	test_sync(1);
 
-	// '@' is unmapped
-	ret = smack_set_ambient("@");
+	ret = smack_set_ambient(UNMAPPED);
 	TEST_CHECK(ret != -1, "smack_set_ambient(): %s", strerror(errno));
 
 	test_sync(2);
 
-	// wait for sibling to exit
+	/* check label in NS and wait for sibling to exit */
+
 	test_sync(3);
 }
 
 void test_cleanup(void)
 {
-	smack_set_ambient("_");
-	smack_set_rule("inside", "*", "-");
 }

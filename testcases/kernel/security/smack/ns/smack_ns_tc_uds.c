@@ -25,7 +25,8 @@
  * This test case check access to communication via UDS with cooperation
  * with Smack namespaces.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -38,28 +39,32 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include "test_common.h"
+#include "test_common_inet.h"
 
 #define TEST_MESSAGE "blah"
 #define BACKLOG 5
 #define SOCKET_PATH "tmp/test_socket"
 #define BUF_SIZE 100
 
-/* packet receive timeout in microseconds */
-#define TIMEOUT 50000
+#define LABEL   "label"
+#define INSIDE  INSIDE_PROC_LABEL
+#define OUTSIDE OUTSIDE_PROC_LABEL
 
+/*
+ * Add rule to allow namespaced process access socket file
+ * and connect client.
+ */
+static const struct test_smack_rule_desc test_rules[] = {
+	{INSIDE,  LABEL,  "rw", automatic},
+	{INSIDE,  OUTSIDE, "w", automatic},
+	{OUTSIDE, INSIDE,  "w", automatic},
+	{NULL}
+};
 
-/* sets sockets receive/send timeouts */
-static inline void set_socket_timeout(int sfd)
-{
-	int ret;
-	struct timeval tv;
-	tv.tv_sec = 0;
-	tv.tv_usec = TIMEOUT;
-	ret = setsockopt(sfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-	TEST_CHECK(ret != -1, "setsockopt(): %s", strerror(errno));
-	ret = setsockopt(sfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-	TEST_CHECK(ret != -1, "setsockopt(): %s", strerror(errno));
-}
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL, MAPPED_LABEL_PREFIX LABEL, automatic},
+	{NULL}
+};
 
 void main_inside_ns(void)
 {
@@ -73,7 +78,7 @@ void main_inside_ns(void)
 
 	sfd = socket(AF_UNIX, SOCK_STREAM, 0);
 	TEST_CHECK(sfd != -1, strerror(errno));
-	set_socket_timeout(sfd);
+	set_socket_options(sfd);
 
 	/* Connect to the server */
 	memset(&addr, 0, sizeof(struct sockaddr_un));
@@ -103,20 +108,11 @@ void main_outside_ns(void)
 	ssize_t num_read;
 	char buf[BUF_SIZE];
 
-	/*
-	 * Add rule to allow namespaced process access socket file
-	 * and connect client.
-	 */
-	ret = smack_set_rule("inside", "l1", "rw");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("inside", "outside", "w");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("outside", "inside", "w");
-	TEST_CHECK(ret == 0, strerror(errno));
+	init_test_resources(test_rules, test_mappings, NULL, NULL);
 
 	sfd = socket(AF_UNIX, SOCK_STREAM, 0);
 	TEST_CHECK(sfd != -1, strerror(errno));
-	set_socket_timeout(sfd);
+	set_socket_options(sfd);
 
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
@@ -128,7 +124,7 @@ void main_outside_ns(void)
 	TEST_CHECK(ret != -1, strerror(errno));
 
 	/* set socket file label */
-	ret = smack_set_file_label(SOCKET_PATH, "l1", SMACK_LABEL_ACCESS, 0);
+	ret = smack_set_file_label(SOCKET_PATH, LABEL, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret != -1, strerror(errno));
 
 	test_sync(0);
@@ -150,15 +146,5 @@ void main_outside_ns(void)
 
 void test_cleanup(void)
 {
-	int ret;
-
-	ret = smack_set_rule("inside", "l1", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("inside", "outside", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("outside", "inside", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
-
-	ret = remove(SOCKET_PATH);
-	TEST_CHECK(ret != -1 || errno != ENOENT, strerror(errno));
+	remove(SOCKET_PATH);
 }

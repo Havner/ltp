@@ -26,7 +26,8 @@
  * Other test cases trust in smackfs' "access" interface to check object
  * to subject access.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -39,55 +40,42 @@
 #include <sys/wait.h>
 #include "test_common.h"
 
-static const char* exe_file_path = "tmp/exe_file";
+#define LABEL1   "label1"
+#define LABEL2   "label2"
+#define LABEL3   "label3"
+#define LABEL4   "label4"
 
-static struct test_file_desc files[] =
+#define PATH1    "tmp/a"
+#define PATH2    "tmp/b"
+#define PATH3    "tmp/c"
+#define PATH_EXE "tmp/exe"
+
+static struct test_smack_rule_desc test_rules[] =
 {
-	{"tmp/a", 0777, "l1"}, /* will get "r" permission */
-	{"tmp/b", 0777, "l2"}, /* will get "w" permission */
-	{"tmp/c", 0777, "l3"}, /* will get "rw" permission */
-	{NULL, 0, NULL}
+	{INSIDE_PROC_LABEL, LABEL1, "r", automatic},
+	{INSIDE_PROC_LABEL, LABEL2, "w", automatic},
+	{INSIDE_PROC_LABEL, LABEL3, "rw", automatic},
+	{INSIDE_PROC_LABEL, LABEL4, "rx", automatic},
+	{NULL}
 };
 
-static struct test_smack_rule_desc rules[] =
-{
-	{"inside", "l1", "r"},
-	{"inside", "l2", "w"},
-	{"inside", "l3", "rw"},
-	{"inside", "l4", "rx"},
-	{NULL, NULL, NULL}
+static struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL1, MAPPED_LABEL_PREFIX LABEL1, automatic},
+	{LABEL2, MAPPED_LABEL_PREFIX LABEL2, automatic},
+	{LABEL3, MAPPED_LABEL_PREFIX LABEL3, automatic},
+	{LABEL4, MAPPED_LABEL_PREFIX LABEL4, automatic},
+	{NULL}
 };
 
-/*
- * Create a test executable file
- */
-static inline int create_exe_file(const char *path, mode_t mode,
-				  const char *label)
-{
-	const char* content = "#!/bin/bash\n";
+static struct test_file_desc test_files[] = {
+	{PATH1,    0777, LABEL1, NULL, NULL, regular},    /* will get "r" permission */
+	{PATH2,    0777, LABEL2, NULL, NULL, regular},    /* will get "w" permission */
+	{PATH3,    0777, LABEL3, NULL, NULL, regular},    /* will get "rw" permission */
+	{PATH_EXE, 0777, LABEL4, NULL, NULL, executable}, /* executable */
+	{NULL}
+};
 
-	int fd = open(path, O_CREAT | O_WRONLY, 0700);
-	if (fd < 0)
-		return -1;
-	if (write(fd, content, strlen(content)) != (ssize_t)strlen(content))
-		ERR_EXIT("write()");
-	close(fd);
-
-	if (chmod(path, mode) == -1)
-		ERR_EXIT("chmod()");
-
-	if (chown(path, uid, gid) == -1)
-		ERR_EXIT("chown()");
-
-	if (label != NULL)
-		if (smack_set_file_label(path, label, SMACK_LABEL_ACCESS, 0)
-		    == -1)
-			ERR_EXIT("smack_set_file_label()");
-
-	return 0;
-}
-
-int test_file_access(const char *path, mode_t mode)
+int test_file_open(const char *path, mode_t mode)
 {
 	int fd = open(path, mode);
 	if (fd < 0)
@@ -95,6 +83,12 @@ int test_file_access(const char *path, mode_t mode)
 	close(fd);
 	errno = 0;
 	return 0;
+}
+
+int test_file_access(const char *path, mode_t mode)
+{
+	errno = 0;
+	return access(path, mode);
 }
 
 /*
@@ -132,7 +126,7 @@ void main_inside_ns(void)
 {
 	int ret;
 
-	// wait for file creation and rules setup
+	/* wait for file creation and rules setup */
 	test_sync(0);
 
 	int ret_allow_access[] = {0, 0, 0, 0,
@@ -140,26 +134,50 @@ void main_inside_ns(void)
 	int ret_deny_access[] =  {0,      EACCES, 0,      0,
 				  EACCES, EACCES, EACCES, EACCES};
 
-	test_file_access(files[0].path, O_RDONLY);
+	/*
+	 * It's important to note that for open(W) to succeed you need
+	 * to have both, WRITE and READ smack access to a file, this
+	 * is intentionall. access() check on the other hand does not
+	 * reaquire READ for WRITE check (not sure though if that is
+	 * intentionall as well)
+	 */
+	test_file_access(PATH1, R_OK);
 	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
-	test_file_access(files[0].path, O_WRONLY);
+	test_file_open(PATH1, O_RDONLY);
+	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
+	test_file_access(PATH1, W_OK);
+	TEST_CHECK(errno == ret_deny_access[env_id], strerror(errno));
+	test_file_open(PATH1, O_WRONLY);
 	TEST_CHECK(errno == ret_deny_access[env_id], strerror(errno));
 
-	test_file_access(files[1].path, O_RDONLY);
+	test_file_access(PATH2, R_OK);
 	TEST_CHECK(errno == ret_deny_access[env_id], strerror(errno));
-	test_file_access(files[1].path, O_WRONLY);
+	test_file_open(PATH2, O_RDONLY);
+	TEST_CHECK(errno == ret_deny_access[env_id], strerror(errno));
+	test_file_access(PATH2, W_OK);
+	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
+	test_file_open(PATH2, O_WRONLY);
 	TEST_CHECK(errno == ret_deny_access[env_id], strerror(errno));
 
-	test_file_access(files[2].path, O_RDONLY);
+	test_file_access(PATH3, R_OK);
 	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
-	test_file_access(files[2].path, O_WRONLY);
+	test_file_open(PATH3, O_RDONLY);
+	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
+	test_file_access(PATH3, W_OK);
+	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
+	test_file_open(PATH3, O_WRONLY);
 	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
 
-	test_file_access(exe_file_path, O_RDONLY);
+	test_file_access(PATH_EXE, R_OK);
 	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
-	test_file_access(exe_file_path, O_WRONLY);
+	test_file_open(PATH_EXE, O_RDONLY);
+	TEST_CHECK(errno == ret_allow_access[env_id], strerror(errno));
+	test_file_access(PATH_EXE, W_OK);
 	TEST_CHECK(errno == ret_deny_access[env_id], strerror(errno));
-	ret = test_file_exe_access(exe_file_path);
+	test_file_open(PATH_EXE, O_WRONLY);
+	TEST_CHECK(errno == ret_deny_access[env_id], strerror(errno));
+
+	ret = test_file_exe_access(PATH_EXE);
 	TEST_CHECK(ret == ret_allow_access[env_id], "ret = %d, %s", ret,
 		   strerror(errno));
 
@@ -168,19 +186,15 @@ void main_inside_ns(void)
 
 void main_outside_ns(void)
 {
-	init_test_resources(rules, NULL, NULL, files);
-
-	// Create test exe file
-	// TODO: include this in init_test as well
-	if (create_exe_file(exe_file_path, 0777, "l4") == -1)
-		ERR_EXIT("create_exe_file");
+	init_test_resources(test_rules, test_mappings, NULL, test_files);
 
 	test_sync(0);
-	// test will now execute
+
+	/* test will now execute */
+
 	test_sync(1);
 }
 
 void test_cleanup(void)
 {
-	remove(exe_file_path);
 }

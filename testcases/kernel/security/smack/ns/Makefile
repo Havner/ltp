@@ -28,16 +28,17 @@ INSTALL_TARGETS	:= *.sh
 INSTALL_TARGETS	+= smack_ns_tc_*
 INSTALL_TARGETS	+= mount_test.img
 
+CFLAGS		+= -g -O0
 LDLIBS		+= -lcap
 TEST_CASES	:= $(patsubst $(abs_srcdir)/%.c,%,$(wildcard $(abs_srcdir)/smack_ns_tc_*.c))
 MAKE_TARGETS	:= smack_ns_launch
 MAKE_TARGETS	+= $(TEST_CASES)
 RM		+= -r
 
-smack_ns_launch: smack_ns_launch.c common.h ../smack_common.h
+smack_ns_launch: smack_ns_launch.c smack_ns_common.h ../smack_common.h
 	$(CC) $(CFLAGS) $< -o $@
 
-test_common.o: test_common.c test_common.h common.h ../smack_common.h
+test_common.o: test_common.c test_common.h smack_ns_common.h ../smack_common.h
 	$(CC) $(CFLAGS) -c test_common.c -o $@
 
 smack_ns_tc_%: smack_ns_tc_%.c test_common.o

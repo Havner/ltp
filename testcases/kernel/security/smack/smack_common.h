@@ -20,7 +20,8 @@
  * Helper module for maniupulating smack labels.
  * Based on libsmack (https://github.com/smack-team/smack/)
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #ifndef __SMACK_COMMON_H
@@ -40,8 +41,11 @@
 #include <fcntl.h>
 #include <stdint.h>
 
-#define PROC_PATH_MAX_LEN 255
+#ifndef SMACK_MAGIC
 #define SMACK_MAGIC 0x43415d53 // "SMAC"
+#endif
+
+#define PROC_PATH_MAX_LEN 255
 #define ACCESS_LEN 7
 #define SMACK_MNT_PATH "/smack/"
 #define SMACK_LABEL_MAP_FILE "smack_map"
@@ -49,6 +53,11 @@
 #define LOAD_MAX_LEN (2 * (SMACK_LABEL_MAX_LEN + 1) + ACCESS_LEN)
 #define CHG_RULE_MAX_LEN (2 * (SMACK_LABEL_MAX_LEN + 1) + 2 * ACCESS_LEN + 1)
 #define LABEL_MAPPING_LEN (2 * SMACK_LABEL_MAX_LEN + 2)
+
+#define UNUSED(var) (void)(var)
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
+#endif
 
 enum smack_label_type {
 	SMACK_LABEL_ACCESS = 0,
@@ -68,6 +77,11 @@ enum smack_access_type {
 	ACCESS_LOCK = (1 << 5),
 	ACCESS_BRINGUP = (1 << 6),
 };
+
+#define ACCESS_ANYREAD (ACCESS_READ | ACCESS_LOCK)
+#define ACCESS_FULL    (ACCESS_READ | ACCESS_WRITE | ACCESS_EXE |     \
+                        ACCESS_APPEND | ACCESS_TRANS | ACCESS_LOCK |  \
+                        ACCESS_BRINGUP)
 
 static inline const char* smack_xattr_name(enum smack_label_type type)
 {
@@ -138,7 +152,7 @@ static inline void parse_access_type(const char *in, char out[ACCESS_LEN + 1])
  * Get SMACK label of a file.
  * Returns 0 on success.
  * Obtained label is stored under "label" pointer.
- * User is responsible for freeing memory.
+ * User is responsible for freeing memory if ret == 0.
  */
 static inline int smack_get_file_label(const char *file_path, char **label,
 				       enum smack_label_type label_type,
@@ -152,16 +166,17 @@ static inline int smack_get_file_label(const char *file_path, char **label,
 
 	if (follow_links)
 		ret = getxattr(file_path, xattr_name, value,
-		SMACK_LABEL_MAX_LEN + 1);
+			       SMACK_LABEL_MAX_LEN + 1);
 	else
 		ret = lgetxattr(file_path, xattr_name, value,
-		SMACK_LABEL_MAX_LEN + 1);
+				SMACK_LABEL_MAX_LEN + 1);
 
 	if (ret == -1) {
 		if (errno == ENODATA) {
 			*label = NULL;
 			return 0;
 		}
+		*label = "-ERROR";
 		return -1;
 	}
 
@@ -213,31 +228,26 @@ static inline int smack_set_file_label(const char *file_path, const char *label,
  */
 static inline int smack_get_process_label(pid_t pid, char **label)
 {
-	char *result;
+	char result[SMACK_LABEL_MAX_LEN + 1];
 	int fd, ret;
 	char path[PROC_PATH_MAX_LEN];
-
-	result = calloc(SMACK_LABEL_MAX_LEN + 1, 1);
-	if (result == NULL) {
-		errno = ENOMEM;
-		return -1;
-	}
 
 	snprintf(path, PROC_PATH_MAX_LEN, "/proc/%d/attr/current", pid);
 	fd = open(path, O_RDONLY);
 	if (fd == -1) {
-		free(result);
+		*label = NULL;
 		return -1;
 	}
 
 	ret = read(fd, result, SMACK_LABEL_MAX_LEN);
 	close(fd);
 	if (ret == -1) {
-		free(result);
+		*label = NULL;
 		return -1;
 	}
 
-	*label = result;
+	result[ret] = '\0';
+	*label = strdup(result);
 	return 0;
 }
 
@@ -275,7 +285,7 @@ static inline int smack_set_fd_label(int fd, const char *label,
  * Get SMACK label of a file descriptor.
  * Returns 0 on success.
  */
-static inline int smack_get_fd_label(int fd,  char **label,
+static inline int smack_get_fd_label(int fd, char **label,
 				     enum smack_label_type label_type)
 {
 	char value[SMACK_LABEL_MAX_LEN + 1];
@@ -318,15 +328,18 @@ static inline int smack_set_self_label(const char *label)
 
 	ret = write(fd, label, len);
 	close(fd);
-	return (ret == -1) ? -1 : 0;
+	if (ret == -1)
+		return -1;
+
+	return 0;
 }
 
 /*
  * Set global/self access rule for specified object and subject.
  * Returns 0 on success.
  */
-static inline int smack_set_rule_ex(const char* subject, const char* object,
-				    const char* access, int for_self)
+static inline int smack_set_rule_ex(const char *subject, const char *object,
+				    const char *access, int for_self)
 {
 	char buf[LOAD_MAX_LEN + 1];
 	int ret;
@@ -347,7 +360,7 @@ static inline int smack_set_rule_ex(const char* subject, const char* object,
 		if (fd < 0)
 			return -1;
 
-		load2 = 1;
+		load2 = 0;
 	}
 
 	if (load2)
@@ -411,12 +424,10 @@ static inline int smack_change_rule(const char *subject, const char *object,
 	if (ret < 0) {
 		errno = EINVAL;
 		ret = -1;
-		goto err_out;
-	}
+	} else
+		ret = (write(fd, buf, strlen(buf)) >= 0) ? 0 : -1;
 
-	ret = write(fd, buf, strlen(buf));
-
-	err_out: close(fd);
+	close(fd);
 	return ret;
 }
 
@@ -510,7 +521,10 @@ static inline int smack_revoke_subject(const char* subject)
 
 	ret = write(fd, subject, len);
 	close(fd);
-	return ret != -1 ? 0 : -1;
+	if (ret == -1)
+		return -1;
+
+	return 0;
 }
 
 /*
@@ -525,7 +539,10 @@ static inline int smack_set_onlycap(const char* label)
 
 	ret = write(fd, label, strlen(label));
 	close(fd);
-	return ret != -1 ? 0 : -1;
+	if (ret == -1)
+		return -1;
+
+	return 0;
 }
 
 /*
@@ -534,6 +551,7 @@ static inline int smack_set_onlycap(const char* label)
 static inline int smack_get_onlycap(char** label)
 {
 	int fd, ret;
+	char value[SMACK_LABEL_MAX_LEN + 1];
 
 	fd = open(SMACK_MNT_PATH "onlycap", O_RDONLY);
 	if (fd == -1) {
@@ -541,21 +559,15 @@ static inline int smack_get_onlycap(char** label)
 		return -1;
 	}
 
-	*label = malloc(SMACK_LABEL_MAX_LEN + 1);
-	if (*label == NULL) {
-		return -1;
-	}
-
-	ret = read(fd, *label, SMACK_LABEL_MAX_LEN);
+	ret = read(fd, value, SMACK_LABEL_MAX_LEN);
+	close(fd);
 	if (ret == -1) {
-		close(fd);
-		free(*label);
 		*label = NULL;
 		return -1;
 	}
 
-	(*label)[ret] = '\0';
-	close(fd);
+	value[ret] = '\0';
+	*label = strdup(value);
 	return 0;
 }
 
@@ -564,17 +576,16 @@ static inline int smack_get_onlycap(char** label)
  */
 static inline int smack_set_ambient(const char* label)
 {
-	int fd;
+	int fd, ret;
 	fd = open(SMACK_MNT_PATH "ambient", O_WRONLY);
 	if (fd == -1)
 		return -1;
 
-	if (write(fd, label, strlen(label)) == -1) {
-		close(fd);
-		return -1;
-	}
-
+	ret = write(fd, label, strlen(label));
 	close(fd);
+	if (ret == -1)
+		return -1;
+
 	return 0;
 }
 
@@ -584,6 +595,7 @@ static inline int smack_set_ambient(const char* label)
 static inline int smack_get_ambient(char** label)
 {
 	int fd, ret;
+	char value[SMACK_LABEL_MAX_LEN + 1];
 
 	fd = open(SMACK_MNT_PATH "ambient", O_RDONLY);
 	if (fd == -1) {
@@ -591,22 +603,15 @@ static inline int smack_get_ambient(char** label)
 		return -1;
 	}
 
-	*label = malloc(SMACK_LABEL_MAX_LEN + 1);
-	if (*label == NULL) {
-		return -1;
-	}
-
-	ret = read(fd, *label, SMACK_LABEL_MAX_LEN);
+	ret = read(fd, value, SMACK_LABEL_MAX_LEN);
+	close(fd);
 	if (ret == -1) {
-		close(fd);
-		free(*label);
 		*label = NULL;
 		return -1;
 	}
 
-	(*label)[ret] = '\0';
-
-	close(fd);
+	value[ret] = '\0';
+	*label = strdup(value);
 	return 0;
 }
 
@@ -628,12 +633,10 @@ static inline int smack_map_label(pid_t pid, const char *label,
 
 	snprintf(buf, LABEL_MAPPING_LEN, "%s %s", label, label_ns);
 	ret = write(fd, buf, strlen(buf));
-	if (ret == -1) {
-		close(fd);
-		return -1;
-	}
-
 	close(fd);
+	if (ret == -1)
+		return -1;
+
 	return 0;
 }
 

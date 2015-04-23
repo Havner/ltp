@@ -22,7 +22,8 @@
  * This test case check Smack's transmute access mode with cooperation with
  * Smack namespaces.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -34,39 +35,60 @@
 #include <string.h>
 #include "test_common.h"
 
-static const char* transmute_dir = "tmp/transmute";
-static const char* transmute_file = "tmp/transmute/a";
+#define LABEL1 "label1"
+
+#define TRANSMUTE_DIR  "tmp/transmute"
+#define TRANSMUTE_FILE "tmp/transmute/a"
+
+static const struct test_smack_rule_desc test_rules[] = {
+	{INSIDE_PROC_LABEL, LABEL1, "rwxt", automatic},
+	{NULL}
+};
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL1, MAPPED_LABEL_PREFIX LABEL1, automatic},
+	{NULL}
+};
+
+static const struct test_dir_desc test_dirs[] = {
+	{TRANSMUTE_DIR, 0777, LABEL1, transmute},
+	{NULL}
+};
 
 void main_inside_ns(void)
 {
 	int ret;
 	char *label = NULL;
-	int lsm_ns = env_id & TEST_ENV_SMACK_NS;
 
 	test_sync(0);
 
-	ret = smack_get_file_label(transmute_dir, &label, SMACK_LABEL_ACCESS, 0);
+	ret = smack_get_file_label(TRANSMUTE_DIR, &label, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "n_l1" : "l1");
+	if (ret == 0) {
+		TEST_LABEL(label, LA(LABEL1));
+		free(label);
+	}
 
-	ret = smack_get_file_label(transmute_dir, &label, SMACK_LABEL_TRANSMUTE, 0);
+	ret = smack_get_file_label(TRANSMUTE_DIR, &label, SMACK_LABEL_TRANSMUTE, 0);
 	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
-	TEST_LABEL(label, "TRUE");
+	if (ret == 0) {
+		TEST_LABEL(label, "TRUE");
+		free(label);
+	}
 
 	/*
 	 * Create a file in transmuting directory. The file should get
 	 * access label of the directory.
 	 */
-	ret = create_file(transmute_file, 0444);
-	TEST_CHECK(ret == 0, "create_file(): %s", strerror(errno));
+	ret = file_create(TRANSMUTE_FILE, 0444, -1, -1, regular, NULL, NULL, NULL);
+	TEST_CHECK(ret == 0, "file_create(): %s", strerror(errno));
 
-	ret = smack_get_file_label(transmute_file, &label, SMACK_LABEL_ACCESS, 0);
+	ret = smack_get_file_label(TRANSMUTE_FILE, &label, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "n_l1" : "l1");
-
-	ret = smack_get_file_label(transmute_file, &label, SMACK_LABEL_EXEC, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "?" : "unmapped");
+	if (ret == 0) {
+		TEST_LABEL(label, LA(LABEL1));
+		free(label);
+	}
 
 	test_sync(1);
 }
@@ -76,28 +98,23 @@ void main_outside_ns(void)
 	int ret;
 	char* label = NULL;
 
-	// TODO: use init_test_resources
-	TEST_CHECK(smack_set_rule("inside", "l1", "rwxt") == 0, strerror(errno));
-	mkdir(transmute_dir, S_IRWXU | S_IRWXG | S_IRWXO);
-
-	ret = smack_set_file_label(transmute_dir, "l1", SMACK_LABEL_ACCESS, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_file_label(transmute_dir, "TRUE", SMACK_LABEL_TRANSMUTE, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
+	init_test_resources(test_rules, test_mappings, test_dirs, NULL);
 
 	test_sync(0);
 
-	// wait for checks...
+	/* wait for checks */
+
 	test_sync(1);
 
-	ret = smack_get_file_label(transmute_file, &label, SMACK_LABEL_ACCESS, 0);
+	ret = smack_get_file_label(TRANSMUTE_FILE, &label, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
-	TEST_LABEL(label, "l1");
+	if (ret == 0) {
+		TEST_LABEL(label, LABEL1);
+		free(label);
+	}
 }
 
 void test_cleanup(void)
 {
-	remove(transmute_file);
-	remove(transmute_dir);
-	TEST_CHECK(smack_set_rule("inside", "l1", "-") == 0, strerror(errno));
+	remove(TRANSMUTE_FILE);
 }

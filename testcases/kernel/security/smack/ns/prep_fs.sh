@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# This script was used to generate "mount_test.img" file, which containrs
+# This script was used to generate "mount_test.img" file, which contains
 # ext3 file system with an empty, unlabelled file. Mounting the filesystem
 # via loopback device will be helpful for verifying "smackfsdef" mount option.
 

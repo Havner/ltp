@@ -33,8 +33,7 @@
 #include "smack_common.h"
 
 #define CLEANUP cleanup
-
-char *TCID = "smack_simple";
+const char *TCID = "smack_simple";
 int TST_TOTAL = 1;
 
 #define TEST_FILE_PATH "test_file1"
@@ -57,8 +56,8 @@ static void setup(void)
 
 int main(int argc, char *argv[])
 {
-	(void)argc;
-	(void)argv;
+	UNUSED(argc);
+	UNUSED(argv);
 
 	int fd;
 	char* ret = NULL;
@@ -74,10 +73,10 @@ int main(int argc, char *argv[])
 		tst_resm(TFAIL, "smack_set_self_label() failed: %s",
 			 strerror(errno));
 
-	// create a directory with "transmute" label on
+	/* create a directory with "transmute" label on */
 	if (mkdir("dir", 0777) < 0)
 		tst_resm(TFAIL, "mkdir() failed: %s", strerror(errno));
-	if (smack_set_file_label("dir", "TRUE", SMACK_LABEL_TRANSMUTE, 0) < 0)
+	if (smack_set_file_label(DIR_NAME, "TRUE", SMACK_LABEL_TRANSMUTE, 0) < 0)
 		tst_resm(TFAIL, "smack_set_file_label() failed: %s",
 			 strerror(errno));
 	if (smack_set_file_label(DIR_NAME, LABEL2, SMACK_LABEL_ACCESS, 0) < 0)
@@ -98,7 +97,7 @@ int main(int argc, char *argv[])
 		free(ret);
 	}
 
-	// gain "transmute" access rule for test directory
+	/* gain "transmute" access rule for test directory */
 	smack_set_rule(LABEL1, LABEL2, "rwxt");
 
 	fd = SAFE_OPEN(cleanup, FILE_PATH_2, O_CREAT | O_RDWR, 0666);

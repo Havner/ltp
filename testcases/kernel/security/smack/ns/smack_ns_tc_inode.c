@@ -32,7 +32,8 @@
  * This test case calls various syscalls in order to manipulate inodes:
  * directories, hard links, soft links.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -66,23 +67,60 @@
 
  */
 
-static const char *dir1 = "tmp/dir1";
-static const char *dir2 = "tmp/dir2";
-static const char *dir3 = "tmp/dir3";
-static const char *dir4 = "tmp/dir4";
+#define DIR1          "tmp/dir1"
+#define DIR2          "tmp/dir2"
+#define DIR3          "tmp/dir3"
+#define DIR4          "tmp/dir4"
 
-static const char *rmdir1 = "tmp/dir3/rmdir1";
-static const char *rmdir2 = "tmp/dir3/rmdir2";
-static const char *rmdir3 = "tmp/dir4/rmdir3";
-static const char *rmdir4 = "tmp/dir4/rmdir4";
+#define RMDIR1        "tmp/dir3/rmdir1"
+#define RMDIR2        "tmp/dir3/rmdir2"
+#define RMDIR3        "tmp/dir4/rmdir3"
+#define RMDIR4        "tmp/dir4/rmdir4"
 
-static const char *file1 = "tmp/dir3/file1";
-static const char *new_link1 = "tmp/dir3/link1";
-static const char *renamed_file1 = "tmp/dir3/renamed_file1";
+#define FILE1         "tmp/dir3/file1"
+#define NEW_LINK1     "tmp/dir3/link1"
+#define RENAMED_FILE1 "tmp/dir3/renamed_file1"
 
-static const char *file2 = "tmp/dir4/file2";
-static const char *new_link2 = "tmp/dir4/link2";
-static const char *renamed_file2 = "tmp/dir4/renamed_file2";
+#define FILE2         "tmp/dir4/file2"
+#define NEW_LINK2     "tmp/dir4/link2"
+#define RENAMED_FILE2 "tmp/dir4/renamed_file2"
+
+#define LABEL2        "label2"
+#define LABEL3        "label3"
+#define LABEL4        "label4"
+#define UNMAPPED      "unmapped"
+
+static const struct test_smack_rule_desc test_rules[] = {
+	{INSIDE_PROC_LABEL, UNMAPPED, "rwx", automatic},
+	{INSIDE_PROC_LABEL, LABEL3, "rx", automatic},
+	{INSIDE_PROC_LABEL, LABEL4, "rwx", automatic},
+	{NULL}
+};
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL2, MAPPED_LABEL_PREFIX LABEL2, automatic},
+	{LABEL3, MAPPED_LABEL_PREFIX LABEL3, automatic},
+	{LABEL4, MAPPED_LABEL_PREFIX LABEL4, automatic},
+	{NULL}
+};
+
+static const struct test_dir_desc test_dirs[] = {
+	{DIR1, 0777, UNMAPPED, none},
+	{DIR2, 0777, LABEL2, none},
+	{DIR3, 0777, LABEL3, none},
+	{DIR4, 0777, LABEL4, none},
+	{RMDIR1, 0777, LABEL3, none},
+	{RMDIR2, 0777, LABEL4, none},
+	{RMDIR3, 0777, LABEL3, none},
+	{RMDIR4, 0777, LABEL4, none},
+	{NULL}
+};
+
+static const struct test_file_desc test_files[] = {
+	{FILE1, 0777, SHARED_OBJECT_LABEL, NULL, NULL, regular},
+	{FILE2, 0777, SHARED_OBJECT_LABEL, NULL, NULL, regular},
+	{NULL}
+};
 
 void main_inside_ns(void)
 {
@@ -95,26 +133,26 @@ void main_inside_ns(void)
 	 * Directory access checks
 	 */
 
-	int expected_ret1[] = {1, 1, 0, 0,  // UID = 0
-			       1, 1, 0, 0}; // UID = 1000
-	d = opendir(dir1);
-	if (expected_ret1[env_id])
-		TEST_CHECK(d != NULL || errno != EPERM, strerror(errno));
+	int expected_ret1[] = {0, 0, -1, -1,  /* UID = 0 */
+	                       0, 0, -1, -1}; /* UID = 1000 */
+	d = opendir(DIR1);
+	if (expected_ret1[env_id] == 0)
+		TEST_CHECK(d != NULL, strerror(errno));
 	else
 		TEST_CHECK(d == NULL, "opendir() should fail");
 	closedir(d);
 
-	int expected_ret2[] = {1, 0, 1, 1,  // UID = 0
-			       0, 0, 0, 0}; // UID = 1000
-	d = opendir(dir2);
-	if (expected_ret2[env_id])
-		TEST_CHECK(d != NULL || errno != EPERM, strerror(errno));
+	int expected_ret2[] = { 0, -1,  0,  0,  /* UID = 0 */
+	                       -1, -1, -1, -1}; /* UID = 1000 */
+	d = opendir(DIR2);
+	if (expected_ret2[env_id] == 0)
+		TEST_CHECK(d != NULL, strerror(errno));
 	else
 		TEST_CHECK(d == NULL, "opendir() should fail");
 	closedir(d);
 
-	d = opendir(dir3);
-	TEST_CHECK(d != NULL || errno != EPERM, strerror(errno));
+	d = opendir(DIR3);
+	TEST_CHECK(d != NULL, strerror(errno));
 	closedir(d);
 
 
@@ -122,38 +160,38 @@ void main_inside_ns(void)
 	 * Hard link tests
 	 */
 
-	int expected_ret3[] = {1, 0, 1, 1,  // UID = 0
-			       0, 0, 0, 0}; // UID = 1000
-	ret = link(file1, new_link1);
-	if (expected_ret3[env_id]) {
-		TEST_CHECK(ret == 0 || errno != EPERM, strerror(errno));
-		ret = unlink(new_link1);
+	int expected_ret3[] = { 0, -1,  0,  0,  /* UID = 0 */
+	                       -1, -1, -1, -1}; /* UID = 1000 */
+	ret = link(FILE1, NEW_LINK1);
+	if (expected_ret3[env_id] == 0) {
+		TEST_CHECK(ret == 0, strerror(errno));
+		ret = unlink(NEW_LINK1);
 		TEST_CHECK(ret == 0, strerror(errno));
 	} else
 		TEST_CHECK(ret == -1, "link() should fail");
 
-	ret = link(file2, new_link2);
+	ret = link(FILE2, NEW_LINK2);
 	TEST_CHECK(ret == 0, strerror(errno));
-	ret = unlink(new_link2);
+	ret = unlink(NEW_LINK2);
 	TEST_CHECK(ret == 0, strerror(errno));
 
 	/*
 	 * Rename test
 	 */
 
-	int expected_ret4[] = {1, 0, 1, 1,  // UID = 0
-			       0, 0, 0, 0}; // UID = 1000
-	ret = rename(file1, renamed_file1);
-	if (expected_ret4[env_id]) {
-		TEST_CHECK(ret == 0 || errno != EPERM, strerror(errno));
-		ret = rename(renamed_file1, file1);
+	int expected_ret4[] = { 0, -1,  0,  0,  /* UID = 0 */
+	                       -1, -1, -1, -1}; /* UID = 1000 */
+	ret = rename(FILE1, RENAMED_FILE1);
+	if (expected_ret4[env_id] == 0) {
+		TEST_CHECK(ret == 0, strerror(errno));
+		ret = rename(RENAMED_FILE1, FILE1);
 		TEST_CHECK(ret == 0, strerror(errno));
 	} else
 		TEST_CHECK(ret == -1, "link() should fail");
 
-	ret = rename(file2, renamed_file2);
+	ret = rename(FILE2, RENAMED_FILE2);
 	TEST_CHECK(ret == 0, strerror(errno));
-	ret = rename(renamed_file2, file2);
+	ret = rename(RENAMED_FILE2, FILE2);
 	TEST_CHECK(ret == 0, strerror(errno));
 
 
@@ -161,85 +199,43 @@ void main_inside_ns(void)
 	 * rmdir tests
 	 */
 
-	int expected_ret5[] = {1, 0, 1, 1,  // UID = 0
-			       0, 0, 0, 0}; // UID = 1000
-	ret = rmdir(rmdir1);
-	if (expected_ret5[env_id])
-		TEST_CHECK(ret == 0 || errno != EPERM, strerror(errno));
+	int expected_ret5[] = { 0, -1,  0,  0,  /* UID = 0 */
+	                       -1, -1, -1, -1}; /* UID = 1000 */
+	ret = rmdir(RMDIR1);
+	if (expected_ret5[env_id] == 0)
+		TEST_CHECK(ret == 0, strerror(errno));
 	else
 		TEST_CHECK(ret == -1, "rmdir() should fail");
 
-	ret = rmdir(rmdir2);
-	if (expected_ret5[env_id])
-		TEST_CHECK(ret == 0 || errno != EPERM, strerror(errno));
+	ret = rmdir(RMDIR2);
+	if (expected_ret5[env_id] == 0)
+		TEST_CHECK(ret == 0, strerror(errno));
 	else
 		TEST_CHECK(ret == -1, "rmdir() should fail");
 
-	ret = rmdir(rmdir3);
-	if (expected_ret5[env_id])
-		TEST_CHECK(ret == 0 || errno != EPERM, strerror(errno));
+	ret = rmdir(RMDIR3);
+	if (expected_ret5[env_id] == 0)
+		TEST_CHECK(ret == 0, strerror(errno));
 	else
 		TEST_CHECK(ret == -1, "rmdir() should fail");
 
-	ret = rmdir(rmdir4);
-	TEST_CHECK(ret == 0 || errno != EPERM, strerror(errno));
+	ret = rmdir(RMDIR4);
+	TEST_CHECK(ret == 0, strerror(errno));
 
 	test_sync(1);
 }
 
 void main_outside_ns(void)
 {
-	int ret;
-
-	/* setup rules */
-	ret = smack_set_rule("inside", "unmapped", "rwx");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("inside", "l3", "rx");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("inside", "l4", "rwx");
-	TEST_CHECK(ret == 0, strerror(errno));
-
-	/* setup files */
-
-	create_dir_labeled(dir1, 0777, "unmapped");
-	create_dir_labeled(dir2, 0777, "l2");
-	create_dir_labeled(dir3, 0777, "l3");
-	create_dir_labeled(dir4, 0777, "l4");
-
-	create_dir_labeled(rmdir1, 0777, "l3");
-	create_dir_labeled(rmdir2, 0777, "l4");
-	create_dir_labeled(rmdir3, 0777, "l3");
-	create_dir_labeled(rmdir4, 0777, "l4");
-
-	create_file_labeled(file1, 0777, "shared");
-	create_file_labeled(file2, 0777, "shared");
+	init_test_resources(test_rules, test_mappings, test_dirs, test_files);
 
 	test_sync(0);
 
-	/* cleanup rules */
+	/* perform tests */
 
 	test_sync(1);
 }
 
 void test_cleanup(void)
 {
-	/* cleanup rules */
-	TEST_CHECK(smack_set_rule("inside", "unmapped", "-") == 0, strerror(errno));
-	TEST_CHECK(smack_set_rule("inside", "l3", "-") == 0, strerror(errno));
-	TEST_CHECK(smack_set_rule("inside", "l4", "-") == 0, strerror(errno));
-
-	/* cleanup files */
-
-	remove(file1);
-	remove(file2);
-
-	remove(rmdir1);
-	remove(rmdir2);
-	remove(rmdir3);
-	remove(rmdir4);
-
-	remove(dir1);
-	remove(dir2);
-	remove(dir3);
-	remove(dir4);
 }

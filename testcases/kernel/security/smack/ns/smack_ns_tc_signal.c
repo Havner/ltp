@@ -25,7 +25,8 @@
  * This test cases verifies write access from one process to another
  * via sending a signal to a process.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -36,15 +37,29 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/prctl.h>
-#include <linux/securebits.h> // for SECBIT_*
+#include <linux/securebits.h> /* for SECBIT_* */
 #include "test_common.h"
+
+#define LABEL "label"
+#define UNMAPPED "unmapped"
+
+static const struct test_smack_rule_desc test_rules[] = {
+	{INSIDE_PROC_LABEL, LABEL, "w", manual},    /* 0: check 3 */
+	{INSIDE_PROC_LABEL, UNMAPPED, "w", manual}, /* 1: check 4 */
+	{NULL}
+};
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL, MAPPED_LABEL_PREFIX LABEL, automatic},
+	{NULL}
+};
 
 void signal_handler(int sig)
 {
 #ifdef PRINT_DEBUG
 	printf("%d: signal received: %d\n", getpid(), sig);
 #else
-	(void)sig;
+	UNUSED(sig);
 #endif
 }
 
@@ -57,9 +72,15 @@ void main_inside_ns(void)
 	 * target label: "outside"
 	 */
 	test_sync(0);
-	int expected_ret1[] = { 0, -1,  0,  0,
+	/*
+	 * The EACCES in env == 3 is because those 2 processes
+	 * are in the different user namespaces, hence CAP_MAC_OVERRIDE of
+	 * the inside process is inefective (both labels mapped, no rule
+	 * between them is a situation that CAP_MAC_OVERRIDE would deal with).
+	 */
+	int expected_ret1[] = { 0, -1,  0, -1,
 	                       -1, -1, -1, -1};
-	int expected_errno1[] = {0,      EACCES,      0,      0,
+	int expected_errno1[] = {0,      EACCES,      0, EACCES,
 				 EACCES, EACCES, EACCES, EACCES };
 	ret = kill(sibling_pid, SIGUSR1);
 	TEST_CHECK(ret == expected_ret1[env_id] && errno == expected_errno1[env_id],
@@ -68,12 +89,12 @@ void main_inside_ns(void)
 
 	/*
 	 * Check 2:
-	 * target label: "l1" (no "inside l1 w" rule)
+	 * target label: "label" (no "inside label w" rule)
 	 */
 	test_sync(2);
-	int expected_ret2[] = { 0, -1,  0,  0,
+	int expected_ret2[] = { 0, -1,  0, -1,
 			       -1, -1, -1, -1};
-	int expected_errno2[] = {0,      EACCES,      0,      0,
+	int expected_errno2[] = {0,      EACCES,      0, EACCES,
 				 EACCES, EACCES, EACCES, EACCES };
 	errno = 0;
 	ret = kill(sibling_pid, SIGUSR1);
@@ -83,7 +104,7 @@ void main_inside_ns(void)
 
 	/*
 	 * Check 3:
-	 * target label: "l1" (with "inside l1 w")
+	 * target label: "label" (with "inside label w")
 	 */
 	test_sync(4);
 	int expected_ret3[] = {0, 0, 0, 0,
@@ -112,49 +133,57 @@ void main_outside_ns(void)
 {
 	int ret;
 
-	// preserve all capabilities when switching user from root
+	init_test_resources(test_rules, test_mappings, NULL, NULL);
+
+	/* preserve all capabilities when switching user from root */
 	if (prctl(PR_SET_SECUREBITS,
 		  SECBIT_NO_SETUID_FIXUP | SECBIT_NO_SETUID_FIXUP_LOCKED |
 		  SECBIT_NOROOT | SECBIT_NOROOT_LOCKED) == -1)
 		ERR_EXIT("prctl()");
 
-	// change UID to match sibling's UID
+	/* change UID to match sibling's UID */
 	if (setuid(uid) == -1)
 		ERR_EXIT("setuid()");
 
 	signal(SIGUSR1, &signal_handler);
 
 	test_sync(0);
-	// do check 1
+
+	/* do check 1 */
+
 	test_sync(1);
 
-	ret = smack_set_self_label("l1");
+	/* check 2 preparation: */
+	ret = smack_set_self_label(LABEL);
 	TEST_CHECK(ret == 0, strerror(errno));
+
 	test_sync(2);
-	// do check 2
+
+	/* do check 2 */
+
 	test_sync(3);
 
-	ret = smack_set_rule("inside", "l1", "w");
-	TEST_CHECK(ret == 0, strerror(errno));
+	/* check 3 preparation: */
+	set_smack_rule(&test_rules[0]);
+
 	test_sync(4);
-	// do check 3
+
+	/* do check 3 */
+
 	test_sync(5);
 
-	ret = smack_set_self_label("unmapped");
+	/* check 4 preparation: */
+	set_smack_rule(&test_rules[1]);
+	ret = smack_set_self_label(UNMAPPED);
 	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("inside", "unmapped", "w");
-	TEST_CHECK(ret == 0, strerror(errno));
+
 	test_sync(6);
-	// do check 4
+
+	/* do check 4 */
+
 	test_sync(7);
 }
 
 void test_cleanup(void)
 {
-	int ret;
-
-	ret = smack_set_rule("inside", "l1", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_rule("inside", "unmapped", "-");
-	TEST_CHECK(ret == 0, strerror(errno));
 }

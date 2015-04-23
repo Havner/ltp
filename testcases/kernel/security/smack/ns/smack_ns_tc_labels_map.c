@@ -104,7 +104,7 @@ void main_outside_ns(void)
 	TEST_CHECK(ret == -1 && errno == EEXIST, strerror(errno));
 
 	/*
-	 * inavalid labels
+	 * invalid labels
 	 */
 
 	ret = smack_map_label(sibling_pid, "-", "yyyy");

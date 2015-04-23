@@ -26,7 +26,8 @@
  *  * smack_file_lock
  *  * smack_file_open
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -36,23 +37,35 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
-#include <sys/file.h> // for lock
+#include <sys/file.h>
 #include "test_common.h"
 
-static struct test_file_desc test_files[] =
-{
-	{"tmp/file_0", 0666, "l0"},
-	{"tmp/file_1", 0666, "l1"},
-	{"tmp/file_2", 0666, "l0"},
-	{"tmp/file_3", 0666, "l1"},
-	{NULL, 0, NULL}
+#define LABEL0 "label0"
+#define LABEL1 "label1"
+
+#define FILE0  "tmp/file0"
+#define FILE1  "tmp/file1"
+#define FILE2  "tmp/file2"
+#define FILE3  "tmp/file3"
+
+static struct test_smack_rule_desc test_rules[] = {
+	{INSIDE_PROC_LABEL, LABEL0, "rxt", automatic},
+	{INSIDE_PROC_LABEL, LABEL1, "rl", automatic},
+	{NULL}
 };
 
-static struct test_smack_rule_desc test_rules[] =
-{
-	{"inside", "l0", "rxt"},
-	{"inside", "l1", "rl"},
-	{NULL, 0, NULL}
+static struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL0, MAPPED_LABEL_PREFIX LABEL0, automatic},
+	{LABEL1, MAPPED_LABEL_PREFIX LABEL1, automatic},
+	{NULL}
+};
+
+static struct test_file_desc test_files[] = {
+	{FILE0, 0666, LABEL0, NULL, NULL, regular},
+	{FILE1, 0666, LABEL1, NULL, NULL, regular},
+	{FILE2, 0666, LABEL0, NULL, NULL, regular},
+	{FILE3, 0666, LABEL1, NULL, NULL, regular},
+	{NULL}
 };
 
 void main_inside_ns(void)
@@ -60,7 +73,7 @@ void main_inside_ns(void)
 	int fd, ret;
 	int override_tab[] = {1, 0, 1, 1,
 			      0, 0, 0, 0};
-	// is CAP_MAC_OVERRIDE granting access?
+	/* is CAP_MAC_OVERRIDE granting access? */
 	int override = override_tab[env_id];
 
 	/*
@@ -68,7 +81,7 @@ void main_inside_ns(void)
 	 * try to lock file, without w/l permission
 	 */
 	test_sync(0);
-	fd = open(test_files[0].path, O_RDONLY);
+	fd = open(FILE0, O_RDONLY);
 	if (fd == -1)
 		ERR_EXIT("open()");
 	if (override) {
@@ -95,7 +108,7 @@ void main_inside_ns(void)
 	 * try to lock file, with l permission
 	 */
 	test_sync(1);
-	fd = open(test_files[1].path, O_RDONLY);
+	fd = open(FILE1, O_RDONLY);
 	if (fd == -1)
 		ERR_EXIT("open()");
 	ret = flock(fd, LOCK_EX | LOCK_NB);
@@ -113,7 +126,7 @@ void main_inside_ns(void)
 	 * try to lock already locked file file (shared), without w/l permission
 	 */
 	test_sync(2);
-	fd = open(test_files[2].path, O_RDONLY);
+	fd = open(FILE2, O_RDONLY);
 	if (fd == -1)
 		ERR_EXIT("open()");
 	if (override) {
@@ -140,7 +153,7 @@ void main_inside_ns(void)
 	 * try to lock already locked file file (shared), with l permission
 	 */
 	test_sync(3);
-	fd = open(test_files[3].path, O_RDONLY);
+	fd = open(FILE3, O_RDONLY);
 	if (fd == -1)
 		ERR_EXIT("open()");
 	ret = flock(fd, LOCK_EX | LOCK_NB);
@@ -153,40 +166,52 @@ void main_inside_ns(void)
 	TEST_CHECK(ret == 0, "Unlocking failed: %s", strerror(errno));
 	close(fd);
 
-	test_sync(5); // TODO
+	// TODO: Scenario 4 - lock exclusive here
+	// test_sync(4);
+
+	test_sync(5);
 }
 
 void main_outside_ns(void)
 {
 	int ret, fd2, fd3;
 
-	init_test_resources(test_rules, NULL, NULL, test_files);
+	init_test_resources(test_rules, test_mappings, NULL, test_files);
 
-	// Scenario 0
 	test_sync(0);
 
-	// Scenario 1
+	/* Scenario 0 */
+
 	test_sync(1);
 
-	// Scenario 2
-	fd2 = open(test_files[2].path, O_RDONLY);
+	/* Scenario 1 */
+
+	/* Scenario 2 preparation: */
+	fd2 = open(FILE2, O_RDONLY);
 	if (fd2 == -1)
 		ERR_EXIT("open()");
 	ret = flock(fd2, LOCK_SH | LOCK_NB);
 	TEST_CHECK(ret == 0, "Locking failed: %s", strerror(errno));
+
 	test_sync(2);
 
-	// Scenario 3
-	fd3 = open(test_files[3].path, O_RDONLY);
+	/* Scenario 2 */
+
+	/* Scenario 3 preparation: */
+	fd3 = open(FILE3, O_RDONLY);
 	if (fd3 == -1)
 		ERR_EXIT("open()");
 	ret = flock(fd3, LOCK_SH | LOCK_NB);
 	TEST_CHECK(ret == 0, "Locking failed: %s", strerror(errno));
+
 	test_sync(3);
 
+	/* Scenario 3 */
+
+	// test_sync(4);
 	// TODO: Scenario 4 - lock exclusive here
 
-	// wait for scenarios
+	/* wait for scenarios */
 	test_sync(5);
 
 	close(fd2);

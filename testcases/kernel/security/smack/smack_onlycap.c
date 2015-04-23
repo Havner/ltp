@@ -12,8 +12,7 @@
 #include "smack_common.h"
 
 #define CLEANUP cleanup
-
-char *TCID = "smack_onlycap";
+const char *TCID = "smack_onlycap";
 int TST_TOTAL = 1;
 
 #define TEST_FILE_PATH "test_file1"
@@ -52,11 +51,10 @@ static void set_onlycap(const char* label)
 
 static void test_parent(void)
 {
-	// changing labels should pass (our label == onlycap label)
+	/* changing labels should pass (our label == onlycap label) */
 
 	if (smack_set_file_label(TEST_FILE_PATH, FILE_LABEL,
-	                         SMACK_LABEL_ACCESS, 0)
-	    == -1)
+				 SMACK_LABEL_ACCESS, 0) == -1)
 		tst_resm(TFAIL, "smack_set_file_label() failed, errno = %s",
 			 strerror(errno));
 
@@ -68,11 +66,10 @@ static void test_child(void)
 	if (smack_set_self_label(CHILD_LABEL))
 		tst_resm(TFAIL, "Failed to set current process label");
 
-	// changing labels should fail (our label != onlycap label)
+	/* changing labels should fail (our label != onlycap label) */
 
 	if (smack_set_file_label(TEST_FILE_PATH, FILE_LABEL,
-	                         SMACK_LABEL_ACCESS, 0)
-	    == 0)
+				 SMACK_LABEL_ACCESS, 0) == 0)
 		tst_resm(TFAIL, "smack_set_file_label() should fail");
 
 	// TODO: rules modifications, etc.
@@ -80,8 +77,8 @@ static void test_child(void)
 
 int main(int argc, char *argv[])
 {
-	(void)argc;
-	(void)argv;
+	UNUSED(argc);
+	UNUSED(argv);
 
 	int status;
 	pid_t pid;
@@ -102,16 +99,15 @@ int main(int argc, char *argv[])
 	if (pid == -1)
 		tst_resm(TFAIL, "fork() failed");
 	else if (pid == 0) {
-		// child
 		test_child();
 		exit(0);
 	}
 
-	// wait for child process
+	/* wait for child process */
 	if (waitpid(pid, &status, 0) == -1)
 		tst_resm(TFAIL, "waitpid() failed: %s", strerror(errno));
 
-	// cleanup
+	/* cleanup */
 	set_onlycap("-");
 
 	cleanup();

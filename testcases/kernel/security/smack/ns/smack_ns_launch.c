@@ -29,7 +29,8 @@
  * * second in namespaces (optionally) as non-root user (optionaly)
  * Bidirectional communication between processes is provided via unnamed pipes.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -44,8 +45,9 @@
 #include <fcntl.h>
 #include <argp.h>
 #include <dirent.h>
+#include <grp.h>
 
-#include "common.h"
+#include "smack_ns_common.h"
 #include "../smack_common.h"
 
 #define USER_NS_REAL_USER 1001
@@ -59,32 +61,50 @@
 #define CHILD_HELPER		1
 
 
-// common map for all test cases
-#define SMACK_MAP_SIZE 12
-const char* smack_map[SMACK_MAP_SIZE][2] = {
+/*
+ * Common rules for the test framework and all test cases:
+ * * "inside -> _" is needed to do execve() on a testcase binary
+ *   (this rule might seem unnecessary, it's bultin after all,
+ *   but inside namespace '_' stops acting like a builtin floor)
+ * * "inside -> shared" is needed to access shared data in "tmp"
+ *   directory
+ */
+const char* smack_rules[][3] = {
+	// TODO: I would very much like to remove this rule
+	// and depend only on shared label, although it has proven
+	// to be difficult/impossible.
+	// It would require getting rid of '_' dependency on full
+	// access path to the test binary.
+	{INSIDE_PROC_LABEL, "_", "rx"},
+	{INSIDE_PROC_LABEL, SHARED_OBJECT_LABEL, "rwxal"},
+	/* {OUTSIDE, SHARED, rwxal} is implicit by caps */
+	{NULL}
+};
+
+/*
+ * Common map for the test framework and all test cases.
+ */
+const char* smack_map[][2] = {
+	// TODO: I would very much like to remove this mapping
+	// and depend only on shared label, although it has proven
+	// to be difficult/impossible.
+	// It would require getting rid of '_' dependency on full
+	// access path to the test binary.
 	{"_",   "floor"},
-	{"*",   "star"},
 
-	{INSIDE_NS_PROC_LABEL, MAPPED_LABEL_PREFIX INSIDE_NS_PROC_LABEL},
-	{OUTSIDE_NS_PROC_LABEL, MAPPED_LABEL_PREFIX OUTSIDE_NS_PROC_LABEL},
-	{"shared", MAPPED_LABEL_PREFIX "shared"},
+	{INSIDE_PROC_LABEL, MAPPED_LABEL_PREFIX INSIDE_PROC_LABEL},
+	{OUTSIDE_PROC_LABEL, MAPPED_LABEL_PREFIX OUTSIDE_PROC_LABEL},
+	{SHARED_OBJECT_LABEL, MAPPED_LABEL_PREFIX SHARED_OBJECT_LABEL},
 
-	// TODO: define these in common.h (or in each test individually)
-	{"l0",  "n_l0"},
-	{"l1",  "n_l1"},
-	{"l2",  "n_l2"},
-	{"l3",  "n_l3"},
-	{"l4",  "n_l4"},
-	{"l5",  "n_l5"},
-	{"will_be_floor",  "_"},
+	{NULL}
 };
 
 struct arguments {
-	// "real" UID/GID - visible outside USER NS
+	/* "real" UID/GID - visible outside USER NS */
 	uid_t uid;
 	gid_t gid;
 
-	// "mapped" UID/GID - visible inside USER NS
+	/* "mapped" UID/GID - visible inside USER NS */
 	uid_t mapped_uid;
 	gid_t mapped_gid;
 
@@ -97,7 +117,7 @@ struct arguments {
 static struct arguments args;
 static int test_environment_id;
 
-// command line arguments
+/* command line arguments */
 static struct argp_option options[] = {
 	{"user",       'I', 0,     0, "Enable USER namespace.", 0},
 	{"smack",      'S', 0,     0, "Enable Smack namespace.", 0},
@@ -108,7 +128,7 @@ static struct argp_option options[] = {
 	{NULL}
 };
 
-// arguments parser
+/* arguments parser */
 static error_t parse_opt(int key, char *arg, struct argp_state *state)
 {
 	struct arguments *arguments = state->input;
@@ -153,7 +173,22 @@ static char doc[] = "Smack namespace test framework";
 static char args_doc[] = "EXECUTABLE_PATH";
 static struct argp argp = {options, parse_opt, args_doc, doc, NULL, NULL, NULL};
 
-static void write_smack_map(pid_t pid, const char *map[][2], size_t map_size)
+static void write_smack_rules(const char *rules[][3])
+{
+	size_t i;
+#ifdef PRINT_DEBUG
+	printf("%d: setting smack rules...\n", getpid());
+#endif
+	for (i = 0; rules[i][0] != NULL; ++i) {
+#ifdef PRINT_DEBUG
+		printf("%s -> %s: %s\n", rules[i][0], rules[i][1], rules[i][2]);
+#endif
+		if (smack_set_rule(rules[i][0], rules[i][1], rules[i][2]) != 0)
+			ERR_EXIT("smack_set_rule()");
+	}
+}
+
+static void write_smack_map(pid_t pid, const char *map[][2])
 {
 	size_t i;
 
@@ -161,8 +196,7 @@ static void write_smack_map(pid_t pid, const char *map[][2], size_t map_size)
 	printf("%d: green light, setting smack map...\n", getpid());
 #endif
 
-	// write smack map
-	for (i = 0; i < map_size; ++i) {
+	for (i = 0; map[i][0] != NULL; ++i) {
 #ifdef PRINT_DEBUG
 		printf("%s -> %s\n", map[i][0], map[i][1]);
 #endif
@@ -171,7 +205,7 @@ static void write_smack_map(pid_t pid, const char *map[][2], size_t map_size)
 	}
 }
 
-// set uid/gid map for pid process
+/* set uid/gid map for pid process */
 static void write_uid_maps(pid_t pid)
 {
 	FILE *f;
@@ -214,7 +248,7 @@ static void write_uid_maps(pid_t pid)
 
 static void parse_arguments(int argc, char *argv[])
 {
-	// setup and parse arguments
+	/* setup and parse arguments */
 	args.gid = getgid();
 	args.uid = getuid();
 	args.mapped_gid = args.mapped_uid = 0;
@@ -222,7 +256,7 @@ static void parse_arguments(int argc, char *argv[])
 	args.exe_path = NULL;
 	argp_parse(&argp, argc, argv, 0, 0, &args);
 
-	// Categorize test environment ID.
+	/* Categorize test environment ID. */
 	test_environment_id = 0;
 	if (args.smack_ns)
 		test_environment_id |= TEST_ENV_SMACK_NS;
@@ -299,22 +333,13 @@ int main(int argc, char *argv[])
 	char *child_argv[9];
 	pid_t children[2], sibling_pid;
 	int status, exit_helper, exit_namespace;
-	int pipe_to_helper[2]; // parent -> helper pipe
-	int pipe_to_parent[2]; // helper -> parent pipe
+	int pipe_to_helper[2]; /* parent -> helper pipe */
+	int pipe_to_parent[2]; /* helper -> parent pipe */
 
 	if (getuid() != 0 || getgid() != 0) {
 		printf("Must be root!\n");
 		return EXIT_FAILURE;
 	}
-
-	/*
-	 * Sed required Smack rules:
-	 * * "inside -> _" is needed to do execve() on a testcase binary
-	 * * "inside -> shared" is needed to access shared data in "tmp"
-	 *   directory
-	 */
-	smack_set_rule("inside", "_", "rx");
-	smack_set_rule("inside", "shared", "rwxatl");
 
 	/*
 	 * disable stdout buffering (there will be multiple processes writing
@@ -324,12 +349,14 @@ int main(int argc, char *argv[])
 
 	parse_arguments(argc, argv);
 
+	write_smack_rules(smack_rules);
+
 	if (pipe(pipe_to_parent) < 0)
 		ERR_EXIT("pipe()");
 	if (pipe(pipe_to_helper) < 0)
 		ERR_EXIT("pipe()");
 
-	// create "tmp" directory
+	/* create "tmp" directory */
 	umask(0);
 	remove_directory("tmp");
 	if (mkdir("tmp", S_IRWXU | S_IRWXG | S_IRWXO) != 0)
@@ -337,13 +364,13 @@ int main(int argc, char *argv[])
 	if (smack_set_file_label("tmp", "shared", SMACK_LABEL_ACCESS, 0) != 0)
 		ERR_EXIT("smack_set_file_label()");
 
-	// first fork (helper)
+	/* first fork (helper) */
 	children[CHILD_HELPER] = fork();
 
 	if (children[CHILD_HELPER] < 0)
 		ERR_EXIT("fork()");
 
-	// helper process (run always as root)
+	/* helper process (run always as root) */
 	if (children[CHILD_HELPER] == 0) {
 		close(pipe_to_helper[WRITE_END]);
 		close(pipe_to_parent[READ_END]);
@@ -351,25 +378,25 @@ int main(int argc, char *argv[])
 #ifdef PRINT_DEBUG
 		printf("%d: waiting for signal from sibling...\n", getpid());
 #endif
-		// retrieve sibling pid
+		/* retrieve sibling pid */
 		if (read(pipe_to_helper[READ_END], &sibling_pid, sizeof(pid_t))
 		    == -1)
 			ERR_EXIT("pipe_ab read");
 
 		if (args.smack_ns)
-			write_smack_map(sibling_pid, smack_map, SMACK_MAP_SIZE);
+			write_smack_map(sibling_pid, smack_map);
 		if (args.user_ns)
 			write_uid_maps(sibling_pid);
 
-		if (smack_set_self_label(OUTSIDE_NS_PROC_LABEL))
+		if (smack_set_self_label(OUTSIDE_PROC_LABEL))
 			ERR_EXIT("smack_set_self_label()");
 
-		// trigger sibling o do execve()
+		/* trigger sibling to do execve() */
 #ifdef PRINT_DEBUG
 		printf("%d: sending signal back to parent...\n", getpid());
 #endif
 		status = 1;
-		if (write(pipe_to_parent[WRITE_END], &status, 1) == -1)
+		if (write(pipe_to_parent[WRITE_END], &status, sizeof(int)) == -1)
 			ERR_EXIT("write()");
 
 		close(STDIN_FILENO);
@@ -382,7 +409,7 @@ int main(int argc, char *argv[])
 		sprintf(uid_str, "%d", args.uid);
 		sprintf(gid_str, "%d", args.gid);
 		child_argv[0] = args.exe_path;
-		child_argv[1] = OUTSIDE_NS_IDENTIFIER;
+		child_argv[1] = ID_OUTSIDE_NS;
 		child_argv[2] = pid_str;
 		child_argv[3] = env_str;
 		child_argv[4] = uid_str;
@@ -396,19 +423,22 @@ int main(int argc, char *argv[])
 	close(pipe_to_parent[WRITE_END]);
 
 
-	// second fork
+	/* second fork */
 	children[CHILD_NAMESPACES] = fork();
 	if (children[CHILD_NAMESPACES] < 0)
 		ERR_EXIT("fork()");
 
-	// child in namespaces
+	/* child in namespaces */
 	if (children[CHILD_NAMESPACES] == 0) {
-		if (smack_set_self_label(INSIDE_NS_PROC_LABEL))
+		if (smack_set_self_label(INSIDE_PROC_LABEL))
 			ERR_EXIT("smack_set_self_label()");
 
-		// enter user namespace without capabilities
+		/* drop auxilary groups, they can interfere */
+		setgroups(0, NULL);
+
+		/* enter user namespace without capabilities */
 		if (args.user_ns) {
-			// Switch to a target "real" UID / GID
+			/* Switch to a target "real" UID / GID */
 			if (args.uid != 0 && setuid(args.uid) != 0)
 				ERR_EXIT("setuid()");
 			if (args.gid != 0 && setgid(args.gid) != 0)
@@ -419,24 +449,24 @@ int main(int argc, char *argv[])
 			unshare_flags |= CLONE_NEWUSER;
 		if (args.smack_ns)
 			unshare_flags |= CLONE_NEWLSM;
-		unshare_flags |= CLONE_NEWNS; // mount namespace
+		unshare_flags |= CLONE_NEWNS; /* mount namespace */
 
-		// enter namespaces
+		/* enter namespaces */
 		if (unshare(unshare_flags) == -1)
 			ERR_EXIT("unshare()");
 
 #ifdef PRINT_DEBUG
 		printf("%d: unshare done, triggering helper...\n", getpid());
 #endif
-		// send namespaced process PID to the sibling
+		/* send namespaced process PID to the sibling */
 		size_t pid = getpid();
 		if (write(pipe_to_helper[WRITE_END], &pid, sizeof(pid_t)) == -1)
 			ERR_EXIT("write()");
-		// mappings fill occurs now
-		if (read(pipe_to_parent[READ_END], &status, 1) == -1)
+		/* mappings fill occurs now */
+		if (read(pipe_to_parent[READ_END], &status, sizeof(int)) == -1)
 			ERR_EXIT("read()");
 
-		// Switch to a target "mapped" UID / GID inside namespace.
+		/* Switch to a target "mapped" UID / GID inside namespace. */
 		if (args.user_ns) {
 			if (args.mapped_uid != 0 &&
 			    setuid(args.mapped_uid) != 0)
@@ -466,7 +496,7 @@ int main(int argc, char *argv[])
 		sprintf(uid_str, "%d", args.uid);
 		sprintf(gid_str, "%d", args.gid);
 		child_argv[0] = args.exe_path;
-		child_argv[1] = INSIDE_NS_IDENTIFIER;
+		child_argv[1] = ID_INSIDE_NS;
 		child_argv[2] = pid_str;
 		child_argv[3] = env_str;
 		child_argv[4] = uid_str;
@@ -476,11 +506,11 @@ int main(int argc, char *argv[])
 		ERR_EXIT("execve()");
 	}
 
-	// we dont't need any pipes in parent process
+	/* we dont't need any pipes in parent process */
 	close(pipe_to_helper[WRITE_END]);
 	close(pipe_to_parent[READ_END]);
 
-	// wait for children
+	/* wait for children */
 
 	waitpid(children[CHILD_HELPER], &status, 0);
 	exit_helper = WEXITSTATUS(status);
@@ -497,23 +527,27 @@ int main(int argc, char *argv[])
 	/*
 	 * Cleanup
 	 */
-	if (remove_directory("tmp") == -1)
-		perror("remove_directory()");
+	if (rmdir("tmp") == -1) {
+		printf(ANSI_COLOR_YELLOW "WARNING: the test did not clean up "
+		       "after itself.\n" ANSI_COLOR_RESET);
+		if (remove_directory("tmp") == -1)
+			perror("remove_directory()");
+	}
 
 	/*
 	 * TODO: consider restoring the rules (maybe they are used by system
 	 * already?)
 	 */
-	smack_set_rule("inside", "_", "-");
-	smack_set_rule("inside", "shared", "-");
+	smack_set_rule(INSIDE_PROC_LABEL, "_", "-");
+	smack_set_rule(INSIDE_PROC_LABEL, SHARED_OBJECT_LABEL, "-");
 
-	// Success
+	/* Success */
 	if (exit_helper == 0 && exit_namespace == 0) {
 		printf(ANSI_COLOR_GREEN "Passed.\n" ANSI_COLOR_RESET);
 		return 0;
 	}
 
-	// Failure
+	/* Failure */
 	if (exit_helper != 0)
 		printf(ANSI_COLOR_RED "%d: Failed.\n" ANSI_COLOR_RESET,
 		       children[CHILD_HELPER]);

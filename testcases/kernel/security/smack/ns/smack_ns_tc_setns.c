@@ -22,7 +22,8 @@
  * This test case checks behavior of setns() syscall when used to enter Smack
  * namespace.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -32,63 +33,85 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "test_common.h"
 
 #define NS_PATH_SIZE 64
+
+#define LABEL    "label"
+#define UNMAPPED "unmapped"
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL, MAPPED_LABEL_PREFIX LABEL, automatic},
+	{NULL}
+};
 
 void main_inside_ns(void)
 {
 	if (!(env_id & TEST_ENV_SMACK_NS))
 		return;
 
-	// helper process will enter the namespace here
+	/* helper process will enter the namespace here */
+
 	test_sync(0);
 }
 
 void main_outside_ns(void)
 {
-	int fd, ret;
-	char* label = NULL;
-	char path[NS_PATH_SIZE];
+	pid_t child;
+	int status;
+
+	init_test_resources(NULL, test_mappings, NULL, NULL);
 
 	if (!(env_id & TEST_ENV_SMACK_NS))
 		return;
 
-	snprintf(path, NS_PATH_SIZE, "/proc/%d/ns/lsm", sibling_pid);
-	fd = open(path, O_RDONLY);
-	TEST_CHECK(fd != -1, "open(): %s", strerror(errno));
+	child = fork();
+	if (child < 0)
+		ERR_EXIT("fork");
 
-	/* try entering the namespace having unmapped label */
-	ret = smack_set_self_label("unmapped");
-	TEST_CHECK(ret == 0, strerror(errno));
+	/* do the setns() tests in the child process not to break the environment */
+	if (child == 0) {
+		int fd, ret;
+		char* label = NULL;
+		char path[NS_PATH_SIZE];
 
-	ret = setns(fd, 0);
-	TEST_CHECK(ret == -1, "setns() should fail");
-	if (ret == -1)
-		TEST_CHECK(errno == EPERM, "Invalid error code: %s",
-			   strerror(errno));
+		snprintf(path, NS_PATH_SIZE, "/proc/%d/ns/lsm", sibling_pid);
+		fd = open(path, O_RDONLY);
+		TEST_CHECK(fd != -1, "open(): %s", strerror(errno));
 
-	ret = setns(fd, CLONE_NEWLSM);
-	TEST_CHECK(ret == -1, "setns() should fail");
-	if (ret == -1)
-		TEST_CHECK(errno == EPERM, "Invalid error code: %s",
-			   strerror(errno));
+		/* try entering the namespace having unmapped label */
+		ret = smack_set_self_label(UNMAPPED);
+		TEST_CHECK(ret == 0, strerror(errno));
 
-	/* try entering the namespace having mapped label */
-	ret = smack_set_self_label("l1");
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = setns(fd, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
+		ret = setns(fd, 0);
+		TEST_CHECK(ret == -1 && errno == EPERM, "setns() should fail with EPERM, "
+			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
+		ret = setns(fd, CLONE_NEWLSM);
+		TEST_CHECK(ret == -1 && errno == EPERM, "setns() should fail with EPERM, "
+			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
-	/* check if we are really in the namespace */
-	smack_get_process_label(getpid(), &label);
-	TEST_CHECK(label != NULL, strerror(errno));
-	if (label != NULL)
-		TEST_CHECK(strcmp(label, "n_l1") == 0,
-			   "Invalid process label: %s", label);
+		/* try entering the namespace having mapped label */
+		ret = smack_set_self_label(LABEL);
+		TEST_CHECK(ret == 0, strerror(errno));
+		ret = setns(fd, 0);
+		TEST_CHECK(ret == 0, strerror(errno));
 
-	close(fd);
+		/* check if we are really in the namespace */
+		ret = smack_get_process_label(getpid(), &label);
+		TEST_CHECK(ret == 0, strerror(errno));
+		if (ret == 0) {
+			TEST_LABEL(label, MAPPED_LABEL_PREFIX LABEL);
+			free(label);
+		}
+
+		close(fd);
+		exit(0);
+	}
+
+	waitpid(child, &status, 0);
 
 	test_sync(0);
 }

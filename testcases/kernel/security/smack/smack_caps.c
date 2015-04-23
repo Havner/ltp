@@ -35,8 +35,7 @@
 #include "smack_common.h"
 
 #define CLEANUP cleanup
-
-char *TCID = "smack_caps";
+const char *TCID = "smack_caps";
 int TST_TOTAL = 1;
 
 #define TEST_FILE_PATH "test_file1"
@@ -57,8 +56,8 @@ static void setup(void)
 
 int main(int argc, char *argv[])
 {
-	(void)argc;
-	(void)argv;
+	UNUSED(argc);
+	UNUSED(argv);
 
 	int i;
 	cap_t caps;
@@ -73,38 +72,36 @@ int main(int argc, char *argv[])
 		tst_brkm(TCONF, NULL, "Smack is not enabled");
 	setup();
 
-	// set label for a file and current process
+	/* set label for a file and current process */
 	if (smack_set_file_label(TEST_FILE_PATH, LABEL2, SMACK_LABEL_ACCESS, 0)
 	    < 0)
 		tst_resm(TFAIL, "smack_set_file_label() failed");
 	if (smack_set_self_label(LABEL2) < 0)
 		tst_resm(TFAIL, "smack_set_self_label() failed");
 
-	// get current capabilities set
+	/* get current capabilities set */
 	caps = cap_get_proc();
 	if (caps == NULL) {
 		tst_brkm(TFAIL, NULL, "cap_get_proc() failed");
 	}
 
-	// drop CAP_MAC_ADMIN
+	/* drop CAP_MAC_ADMIN */
 	cap = CAP_MAC_ADMIN;
 	cap_set_flag(caps, CAP_EFFECTIVE, 1, &cap, CAP_CLEAR);
 	if (cap_set_proc(caps))
 		tst_resm(TFAIL, "cap_set_proc() failed");
 
-	// changing a file labels should fail
+	/* changing a file labels should fail */
 	for (i = 0; i < 4; ++i) {
 		if (smack_set_file_label(TEST_FILE_PATH, label_values[i],
-					 label_types[i], 0)
-		    == 0)
+					 label_types[i], 0) == 0)
 			tst_resm(TFAIL, "smack_set_file_label() should fail");
 		else if (errno != EPERM)
 			tst_resm(TFAIL, "smack_set_file_label() returned errno"
-				 " = %s",
-				 strerror(errno));
+				 " = %s", strerror(errno));
 	}
 
-	// changing current process label should fail
+	/* changing current process label should fail */
 	if (smack_set_self_label(LABEL1) == 0)
 		tst_resm(TFAIL, "smack_set_self_label() should fail");
 	else if (errno != EPERM)

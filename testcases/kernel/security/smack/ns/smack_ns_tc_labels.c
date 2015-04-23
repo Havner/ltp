@@ -31,7 +31,8 @@
  * This test case manipulates files' and preocesses' labels, taking into account
  * labels mapping inside a Smack namespace.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -43,83 +44,134 @@
 #include <string.h>
 #include "test_common.h"
 
-static const char* test_path = "tmp/a";
-static const char* test_path2 = "tmp/b";
-static const char* test_path3 = "tmp/c";
-static const char* transmute_dir = "tmp/transmute";
+#define LABEL1         "label1"
+#define LABEL2         "label2"
+#define LABEL3         "label3"
+#define LABEL4         "label4"
+#define UNMAPPED       "unmapped"
+#define WILL_BE_FLOOR  "will_be_floor"
+#define INSIDE         INSIDE_PROC_LABEL
+
+#define TEST_PATH1     "tmp/file1"
+#define TEST_PATH2     "tmp/file2"
+#define TEST_PATH3     "tmp/file3"
+#define TEST_TRANSMUTE "tmp/transmute"
+
+static const struct test_smack_mapping_desc test_mappings[] = {
+	{WILL_BE_FLOOR, "_", automatic},
+	{LABEL1, MAPPED_LABEL_PREFIX LABEL1, automatic},
+	{LABEL2, MAPPED_LABEL_PREFIX LABEL2, automatic},
+	{LABEL3, MAPPED_LABEL_PREFIX LABEL3, automatic},
+	{LABEL4, MAPPED_LABEL_PREFIX LABEL4, automatic},
+	{NULL}
+};
+
+static const struct test_dir_desc test_dirs[] = {
+	{TEST_TRANSMUTE, 0777, SHARED_OBJECT_LABEL, transmute},
+	{NULL}
+};
+
+static const struct test_file_desc test_files[] = {
+	{TEST_PATH1, 0666, LABEL1, LABEL2, LABEL3, regular},
+	{TEST_PATH2, 0666, WILL_BE_FLOOR, NULL, NULL, regular},
+	{TEST_PATH3, 0666, SHARED_OBJECT_LABEL, UNMAPPED, UNMAPPED, regular},
+	{NULL}
+};
+
 
 void main_inside_ns(void)
 {
 	int ret;
 	char *label = NULL;
-	int lsm_ns = env_id & TEST_ENV_SMACK_NS;
 
 	test_sync(0);
 
-	// Verify file labels
-	//		       -   U   L  U+L
-	int expected_ret[] = { 0, -1,  0,  0,   // UID = 0
-			      -1, -1, -1, -1 }; // UID = 1000
-	int expected_errno1[] = {     0, EACCES,      0,      0,   // UID = 0
-				 EACCES, EACCES, EACCES, EACCES }; // UID = 1000
+	/* Verify file labels */
+	/*		       -   U   L  U+L   */
+	int expected_ret[] = { 0, -1,  0,  0,   /* UID = 0 */
+			      -1, -1, -1, -1 }; /* UID = 1000 */
+	int expected_errno1[] = {     0, EACCES,      0,      0,   /* UID = 0 */
+				 EACCES, EACCES, EACCES, EACCES }; /* UID = 1000 */
 
 	errno = 0;
-	ret = smack_get_file_label(test_path, &label, SMACK_LABEL_ACCESS, 0);
+	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == expected_ret[env_id] && errno == expected_errno1[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "n_l1" : "l1");
-
-	errno = 0;
-	ret = smack_get_file_label(test_path, &label, SMACK_LABEL_EXEC, 0);
-	TEST_CHECK(ret == expected_ret[env_id] && errno == expected_errno1[env_id],
-			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "n_l2" : "l2");
-
-	errno = 0;
-	ret = smack_get_file_label(test_path, &label, SMACK_LABEL_MMAP, 0);
-	TEST_CHECK(ret == expected_ret[env_id] && errno == expected_errno1[env_id],
-			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "n_l3" : "l3");
-
-
-	// this time the file got "_" label in Smack NS, so we can access it
-	int expected_ret2[] = { 0, -1, 0,  0,
-			       -1, -1, 0,  0};
-	int expected_errno2[] = {0,      EACCES, 0, 0,   // UID = 0
-				 EACCES, EACCES, 0, 0 }; // UID = 1000
-
-	errno = 0;
-	ret = smack_get_file_label(test_path2, &label, SMACK_LABEL_ACCESS, 0);
-	TEST_CHECK(ret == expected_ret2[env_id] && errno == expected_errno2[env_id],
-			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "_" : "will_be_floor");
-
-	ret = smack_get_file_label(transmute_dir, &label, SMACK_LABEL_TRANSMUTE, 0);
-	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
 	if (ret == 0) {
-		TEST_LABEL(label, "TRUE");
+		TEST_LABEL(label, LA(LABEL1));
+		free(label);
+	}
+
+	errno = 0;
+	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_EXEC, 0);
+	TEST_CHECK(ret == expected_ret[env_id] && errno == expected_errno1[env_id],
+			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, LA(LABEL2));
+		free(label);
+	}
+
+	errno = 0;
+	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_MMAP, 0);
+	TEST_CHECK(ret == expected_ret[env_id] && errno == expected_errno1[env_id],
+			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, LA(LABEL3));
+		free(label);
 	}
 
 
-	// unmapped mmap and execute labels
+	/* this time the file got "_" label in Smack NS, so we can access it */
+	int expected_ret2[] = { 0, -1, 0,  0,
+			       -1, -1, 0,  0};
+	int expected_errno2[] = {     0, EACCES, 0, 0,   /* UID = 0 */
+				 EACCES, EACCES, 0, 0 }; /* UID = 1000 */
 
-	ret = smack_get_file_label(test_path3, &label, SMACK_LABEL_EXEC, 0);
+	errno = 0;
+	ret = smack_get_file_label(TEST_PATH2, &label, SMACK_LABEL_ACCESS, 0);
+	TEST_CHECK(ret == expected_ret2[env_id] && errno == expected_errno2[env_id],
+			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, LM(WILL_BE_FLOOR, "_"));
+		free(label);
+	}
+
+	ret = smack_get_file_label(TEST_TRANSMUTE, &label, SMACK_LABEL_TRANSMUTE, 0);
+	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, "TRUE");
+		free(label);
+	}
+
+
+	/* unmapped mmap and execute labels */
+
+	ret = smack_get_file_label(TEST_PATH3, &label, SMACK_LABEL_EXEC, 0);
 	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "?" : "unmapped");
+	if (ret == 0) {
+		TEST_LABEL(label, LM(UNMAPPED, "?"));
+		free(label);
+	}
 
-	ret = smack_get_file_label(test_path3, &label, SMACK_LABEL_MMAP, 0);
+	ret = smack_get_file_label(TEST_PATH3, &label, SMACK_LABEL_MMAP, 0);
 	TEST_CHECK(ret == 0, strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "?" : "unmapped");
+	if (ret == 0) {
+		TEST_LABEL(label, LM(UNMAPPED, "?"));
+		free(label);
+	}
 
 
-	// Verify process label
+	/* Verify process label */
 
 	ret = smack_get_process_label(getpid(), &label);
 	TEST_CHECK(ret == 0, "smack_get_process_label(): %s", strerror(errno));
-	TEST_LABEL(label, lsm_ns ? "n_inside" : "inside");
+	if (ret == 0) {
+		TEST_LABEL(label, LA(INSIDE));
+		free(label);
+	}
 
 
-	// Now modify labels inside ns
+	/* Now modify labels inside ns */
 
 	int expected_ret3[] = { 0, -1,  0,  0,
 			       -1, -1, -1, -1};
@@ -127,17 +179,17 @@ void main_inside_ns(void)
 				 EPERM, EPERM, EPERM, EPERM };
 
 	errno = 0;
-	ret = smack_set_file_label(test_path, "n_l4", SMACK_LABEL_ACCESS, 0);
+	ret = smack_set_file_label(TEST_PATH1, LA(LABEL4), SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == expected_ret3[env_id] && errno == expected_errno3[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
 	errno = 0;
-	ret = smack_set_self_label("n_l1");
+	ret = smack_set_self_label(LA(LABEL1));
 	TEST_CHECK(ret == expected_ret3[env_id] && errno == expected_errno3[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
 
-	// Try unmapped labels
+	/* Try unmapped labels */
 
 	int expected_ret4[] = { 0, -1, -1, -1,
 			       -1, -1, -1, -1};
@@ -145,17 +197,22 @@ void main_inside_ns(void)
 				 EPERM, EPERM, EPERM, EPERM };
 
 	errno = 0;
-	ret = smack_set_file_label(test_path, "unmapped", SMACK_LABEL_ACCESS, 0);
+	ret = smack_set_file_label(TEST_PATH1, UNMAPPED, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(errno == expected_errno4[env_id] && ret == expected_ret4[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
 	errno = 0;
-	ret = smack_set_self_label("unmapped");
+	ret = smack_set_self_label(UNMAPPED);
 	TEST_CHECK(errno == expected_errno4[env_id] && ret == expected_ret4[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
+	test_sync(1);
 
-	// remove file label
+	/* check file and process labels */
+
+	test_sync(2);
+
+	/* remove file label */
 
 	int expected_ret5[] = { 0, -1,  0,  0,
 			       -1, -1, -1, -1};
@@ -163,73 +220,58 @@ void main_inside_ns(void)
 				 EPERM, EPERM, EPERM, EPERM };
 
 	errno = 0;
-	ret = smack_set_file_label(test_path, NULL, SMACK_LABEL_ACCESS, 0);
+	ret = smack_set_file_label(TEST_PATH1, NULL, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(errno == expected_errno5[env_id] && ret == expected_ret5[env_id],
 		   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-
-	test_sync(1);
 }
 
-// this function will be executed outside the namespace
+/* this function will be executed outside the namespace */
 void main_outside_ns(void)
 {
 	int ret;
 	char* label = NULL;
 
-	// create test files, directories, etc.
-	if (create_file_labeled(test_path, 0666, "shared") == -1)
-		ERR_EXIT("create_file");
-	if (create_file_labeled(test_path2, 0666, "shared") == -1)
-		ERR_EXIT("create_file");
-	if (create_file_labeled(test_path3, 0666, "shared") == -1)
-		ERR_EXIT("create_file");
-	create_dir_labeled(transmute_dir, S_IRWXU | S_IRWXG | S_IRWXO, "shared");
-
-	// set file labels to mapped values
-
-	ret = smack_set_file_label(test_path, "l1", SMACK_LABEL_ACCESS, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_file_label(test_path, "l2", SMACK_LABEL_EXEC, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_file_label(test_path, "l3", SMACK_LABEL_MMAP, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
-
-	ret = smack_set_file_label(transmute_dir, "TRUE", SMACK_LABEL_TRANSMUTE,
-				   0);
-	TEST_CHECK(ret == 0, strerror(errno));
-
-	ret = smack_set_file_label(test_path2, "will_be_floor",
-				   SMACK_LABEL_ACCESS, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
-
-	ret = smack_set_file_label(test_path3, "unmapped", SMACK_LABEL_EXEC, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
-	ret = smack_set_file_label(test_path3, "unmapped", SMACK_LABEL_MMAP, 0);
-	TEST_CHECK(ret == 0, strerror(errno));
+	init_test_resources(NULL, test_mappings, test_dirs, test_files);
 
 	test_sync(0);
 
-	// wait for checks...
+	/* wait for checks... */
 	test_sync(1);
 
-	const char* exp_label[] = {"unmapped", "l1", "l4", "l4",
-				   "l1", "l1", "l1", "l1"};
-	ret = smack_get_file_label(test_path, &label, SMACK_LABEL_ACCESS, 0);
+	const char* exp_label[] = {UNMAPPED, LABEL1, LABEL4, LABEL4,
+				     LABEL1, LABEL1, LABEL1, LABEL1};
+	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
-	TEST_LABEL(label, exp_label[env_id]);
+	if (ret == 0) {
+		TEST_LABEL(label, exp_label[env_id]);
+		free(label);
+	}
 
-
-	const char* exp_label2[] = {"unmapped", "inside", "l1",     "l1",
-				    "inside",   "inside", "inside", "inside"};
+	const char* exp_label2[] = {UNMAPPED, INSIDE, LABEL1, LABEL1,
+	                              INSIDE, INSIDE, INSIDE, INSIDE};
 	ret = smack_get_process_label(sibling_pid, &label);
 	TEST_CHECK(ret == 0, "smack_get_process_label(): %s", strerror(errno));
-	TEST_LABEL(label, exp_label2[env_id]);
+	if (ret == 0) {
+		TEST_LABEL(label, exp_label2[env_id]);
+		free(label);
+	}
+
+	test_sync(2);
+
+	// TODO: this test is broken because removing labels in Smack does not
+	// work properly right now
+#if 0
+	const char* exp_label3[] = {   "_", LABEL1,    "_",     "_",
+	                            LABEL1, LABEL1, LABEL1, LABEL1};
+	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_ACCESS, 0);
+	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
+	if (ret == 0) {
+		TEST_LABEL(label, exp_label3[env_id]);
+		free(label);
+	}
+#endif
 }
 
 void test_cleanup(void)
 {
-	remove(test_path);
-	remove(test_path2);
-	remove(test_path3);
-	remove(transmute_dir);
 }

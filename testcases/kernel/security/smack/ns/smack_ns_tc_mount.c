@@ -34,7 +34,8 @@
  *  the file existing in the provided .img file will get a label depending
  *  on aforementioned "smackfsdef" option.
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #define _GNU_SOURCE
@@ -48,31 +49,33 @@
 #include <sys/mount.h>
 #include <fcntl.h>
 #include <linux/loop.h>
-
 #include "test_common.h"
 
 #define LOOP_CONTROL_PATH "/dev/loop-control"
 #define NS_PATH_SIZE 64
 
-// mount_test.img will be mounted at tmp/dir1
-static const char* test_img = "mount_test.img";
-static const char* test_img_file = "tmp/dir1/file";
+#define LABEL    "label"
+#define UNMAPPED "unmapped"
 
-static struct test_file_desc test_dirs[] =
-{
-	{"tmp/dir0", 0777, "*"},
-	{"tmp/dir1", 0777, "*"},
-	{NULL, 0, NULL}
+#define DIR0     "tmp/dir0"
+#define DIR1     "tmp/dir1"
+
+/* mount_test.img will be mounted at tmp/dir1 */
+static const char* TEST_IMG = "mount_test.img";
+static const char* TEST_IMG_FILE = "tmp/dir1/file";
+
+static struct test_smack_mapping_desc test_mappings[] = {
+	{LABEL, MAPPED_LABEL_PREFIX LABEL, automatic},
+	{NULL}
 };
 
-static struct test_smack_rule_desc test_rules[] =
+static struct test_dir_desc test_dirs[] =
 {
-	/* allow rwx access to created directories */
-	{"inside", "*", "rwx"},
-	{NULL, 0, NULL}
+	{DIR0, 0777, SHARED_OBJECT_LABEL, 0},
+	{DIR1, 0777, SHARED_OBJECT_LABEL, 0},
+	{NULL}
 };
 
-static const int mount_opts_num = 4;
 static const char *mount_opts[] =
 {
 	"smackfsfloor",
@@ -82,10 +85,9 @@ static const char *mount_opts[] =
 };
 
 /*
- * Mount 'src' file to 'dest' via loopback device
+ * Attach 'img' file to a loopback device
  */
-static int mount_loopback(const char *src, const char *dest, const char *opts,
-			  char **loop_dev)
+static int prepare_image_loopback(const char *img, char **loop_dev)
 {
 	char loop_dev_path[16];
 	int file_fd = -1, loop_fd = -1, ret = -1;
@@ -96,15 +98,19 @@ static int mount_loopback(const char *src, const char *dest, const char *opts,
 	if (ctrl_fd == -1) {
 		TEST_ERROR("open(\"" LOOP_CONTROL_PATH "\", O_RDWR): %s",
 			   strerror(errno));
-	} else {
-		loopback_dev_id = ioctl(ctrl_fd, LOOP_CTL_GET_FREE);
-		TEST_CHECK(loopback_dev_id >= 0, "ioctl(): %s", strerror(errno));
-#ifdef PRINT_DEBUG
-		if (loopback_dev_id >= 0)
-			printf("Free loopback device found: %d\n", loopback_dev_id);
-#endif
-		close(ctrl_fd);
+		return -1;
 	}
+
+	loopback_dev_id = ioctl(ctrl_fd, LOOP_CTL_GET_FREE);
+	close(ctrl_fd);
+	if (loopback_dev_id < 0) {
+		TEST_ERROR("ioctl(): %s", strerror(errno));
+		return -1;
+	}
+
+#ifdef PRINT_DEBUG
+	printf("Free loopback device found: %d\n", loopback_dev_id);
+#endif
 
 	/* open loopback device */
 	sprintf(loop_dev_path, "/dev/loop%d", loopback_dev_id);
@@ -115,9 +121,9 @@ static int mount_loopback(const char *src, const char *dest, const char *opts,
 		return -1;
 	}
 
-	file_fd = open(src, O_RDWR);
+	file_fd = open(img, O_RDWR);
 	if (file_fd == -1) {
-		TEST_ERROR("open(\"%s\", O_RDWR): %s", src, strerror(errno));
+		TEST_ERROR("open(\"%s\", O_RDWR): %s", img, strerror(errno));
 		goto error;
 	}
 
@@ -126,16 +132,6 @@ static int mount_loopback(const char *src, const char *dest, const char *opts,
 	if (ret == -1) {
 		TEST_ERROR("ioctl(%d, LOOP_SET_FD, %d): %s", loop_fd, file_fd,
 			   strerror(errno));
-		goto error;
-	}
-
-	/* mount a directory to the loopback device */
-	errno = 0;
-	ret = mount(loop_dev_path, dest, "ext2", MS_MGC_VAL, opts);
-	if (ret == -1) {
-		printf("mount(\"%s\", \"%s\", \"ext2\", 0, \"%s\") failed: "
-		       "%s\n", loop_dev_path, dest, opts, strerror(errno));
-		ioctl(loop_fd, LOOP_CLR_FD, 0);
 		goto error;
 	}
 
@@ -149,30 +145,26 @@ error:
 	return ret;
 }
 
-int umount_loopback(const char *dest, char *loop_dev)
+int close_loopback(char *loop_dev)
 {
 	int loop_fd, ret;
-	TEST_CHECK(umount(dest) == 0, "umount(): %s", strerror(errno));
 
 	loop_fd = open(loop_dev, O_RDWR);
-	if (loop_fd == -1) {
+	if (loop_fd == -1)
 		return -1;
-	}
 
 	ret = ioctl(loop_fd, LOOP_CLR_FD, 0);
-	if (ret == -1) {
-		close(loop_fd);
-		return -1;
-	}
-
 	close(loop_fd);
-	errno = 0;
+	if (ret == -1)
+		return -1;
+
 	return 0;
 }
 
 void main_inside_ns(void)
 {
-	int ret, i;
+	int ret;
+	size_t i;
 	const int mount_flags = MS_NOSUID | MS_NODEV | MS_STRICTATIME | MS_RDONLY;
 	char *label = NULL, *loop_dev;
 	char buf[128];
@@ -183,10 +175,10 @@ void main_inside_ns(void)
 	 * Scenario 1:
 	 * simple mount tmpfs
 	 */
-	int expected_ret1[] = { 0,  0,  0,  0,   // UID = 0
-			       -1, -1, -1, -1 }; // UID = 1000
-	int expected_errno1[] = {    0,     0,     0,     0,   // UID = 0
-			         EPERM, EPERM, EPERM, EPERM }; // UID = 1000
+	int expected_ret1[] = { 0,  0,  0,  0,   /* UID = 0 */
+			       -1, -1, -1, -1 }; /* UID = 1000 */
+	int expected_errno1[] = {    0,     0,     0,     0,   /* UID = 0 */
+				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
 	errno = 0;
 	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags, NULL);
 	TEST_CHECK(ret == expected_ret1[env_id] && errno == expected_errno1[env_id],
@@ -199,70 +191,77 @@ void main_inside_ns(void)
 	 * Scenario 2:
 	 * mount tmpfs with mapped labels
 	 */
-	int expected_ret2[] = { 0, -1,  0,  0,   // UID = 0
-			       -1, -1, -1, -1 }; // UID = 1000
-	int expected_errno2[] = {    0, EPERM,     0,     0,   // UID = 0
-				 EPERM, EPERM, EPERM, EPERM }; // UID = 1000
+	int expected_ret2[] = { 0, -1,  0,  0,   /* UID = 0 */
+			       -1, -1, -1, -1 }; /* UID = 1000 */
+	int expected_errno2[] = {    0, EPERM,     0,     0,   /* UID = 0 */
+				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	sprintf(buf, "smackfsdef=%s", LA(LABEL));
 	errno = 0;
-	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags,
-		    "smackfsdef=n_l1");
+	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags, buf);
 	TEST_CHECK(ret == expected_ret2[env_id] && errno == expected_errno2[env_id],
 		   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-	/*
-	 * TODO: at this point a file could be created by sibling process.
-	 * Usage of setns() may be required.
-	 */
+	// TODO: at this point a file could be created by sibling process with setns.
 	if (ret == 0)
 		umount(test_dirs[0].path);
-
-
-	/*
-	 * Execute rest of the tests only as real root.
-	 * The reason is we need to have RW access to loopback device
-	 * in order to prepare it for mounting to a directory.
-	 * One of possibility to workaround this would be to
-	 * pass file descriptior to loop* device from sibling process.
-	 */
-	if (env_id != 0 && env_id != 2)
-		goto finish;
 
 
 	/*
 	 * Scenario 3:
 	 * mount tmpfs with unmapped labels
 	 */
-	int expected_ret3[] = { 0, -1, -1, -1,   // UID = 0
-			       -1, -1, -1, -1 }; // UID = 1000
-	int expected_errno3[] = {    0, EPERM, EBADR, EBADR,   // UID = 0
-				 EPERM, EPERM, EPERM, EPERM }; // UID = 1000
+	int expected_ret3[] = { 0, -1, -1, -1,   /* UID = 0 */
+			       -1, -1, -1, -1 }; /* UID = 1000 */
+	int expected_errno3[] = {    0, EPERM, EBADR, EBADR,   /* UID = 0 */
+				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	sprintf(buf, "smackfsdef=%s", UNMAPPED);
 	errno = 0;
-	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags, "smackfsdef=unmapped");
+	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags, buf);
 	TEST_CHECK(ret == expected_ret3[env_id] && errno == expected_errno3[env_id],
 		   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 	if (ret == 0)
 		umount(test_dirs[0].path);
 
+	/*
+	 * Execute rest of the tests only as real root.
+	 * The reasons are:
+	 * - mount() requires CAP_SYS_ADMIN
+	 * - we need rw access to /dev/loop*
+	 * - setns may be required to enter MNTNS
+	 * - mounting with smack* options requires CAP_MAC_ADMIN
+	 */
+	// TODO: The first three can be overcome to test the fourth.
+	if (env_id != 0 && env_id != 2)
+		goto finish;
+
+	/* no point to continue if we can't prepare loopback device */
+	// TODO: as above, extend number of configs where it is possible
+	ret = prepare_image_loopback(TEST_IMG, &loop_dev);
+	if (ret == -1)
+		goto finish;
 
 	/*
 	 * Scenario 4:
 	 * smackfsdef with mapped label
 	 */
-	int expected_ret4[] = { 0, -1,  0, -1,   // UID = 0
-			       -1, -1, -1, -1 }; // UID = 1000
-	int expected_errno4[] = {    0, EBUSY,     0, EBUSY,   // UID = 0
-				 EBUSY, EBUSY, EBUSY, EBUSY }; // UID = 1000
-	// EBUSY, because we won't have DAC access to /dev/loop* files
+	int expected_ret4[] = { 0, -1,  0, -1,   /* UID = 0 */
+			       -1, -1, -1, -1 }; /* UID = 1000 */
+	int expected_errno4[] = {    0, EPERM,     0, EPERM,   /* UID = 0 */
+				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	sprintf(buf, "smackfsdef=%s", LA(LABEL));
 	errno = 0;
-	ret = mount_loopback(test_img, test_dirs[1].path, "smackfsdef=n_l1", &loop_dev);
+	ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);
 	TEST_CHECK(ret == expected_ret4[env_id] && errno == expected_errno4[env_id],
 		   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 	if (ret == 0) {
-		ret = smack_get_file_label(test_img_file, &label, SMACK_LABEL_ACCESS, 0);
+		ret = smack_get_file_label(TEST_IMG_FILE, &label, SMACK_LABEL_ACCESS, 0);
 		TEST_CHECK(ret == 0, "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-		TEST_LABEL(label, "n_l1");
-		// TODO: verify the label outside the namespace
-		umount_loopback(test_dirs[1].path, loop_dev);
-		free(loop_dev);
+		if (ret == 0) {
+			TEST_LABEL(label, LA(LABEL));
+			free(label);
+		}
+
+		ret = umount(test_dirs[1].path);
+		TEST_CHECK(ret == 0, "umount(): %s", strerror(errno));
 	}
 
 
@@ -270,56 +269,63 @@ void main_inside_ns(void)
 	 * Scenario 5:
 	 * smackfsdef with unmapped label
 	 */
-	int expected_ret5[] = { 0, -1, -1, -1,   // UID = 0
-			       -1, -1, -1, -1 }; // UID = 1000
-	int expected_errno5[] = {    0, EBUSY, EBADR, EBUSY,   // UID = 0
-				 EBUSY, EBUSY, EBUSY, EBUSY }; // UID = 1000
+	int expected_ret5[] = { 0, -1, -1, -1,   /* UID = 0 */
+			       -1, -1, -1, -1 }; /* UID = 1000 */
+	int expected_errno5[] = {    0, EPERM, EBADR, EPERM,   /* UID = 0 */
+				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	sprintf(buf, "smackfsdef=%s", UNMAPPED);
 	errno = 0;
-	ret = mount_loopback(test_img, test_dirs[1].path, "smackfsdef=unmapped", &loop_dev);
+	ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);
 	TEST_CHECK(ret == expected_ret5[env_id] && errno == expected_errno5[env_id],
 		   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 	if (ret == 0) {
-		ret = smack_get_file_label(test_img_file, &label, SMACK_LABEL_ACCESS, 0);
+		ret = smack_get_file_label(TEST_IMG_FILE, &label, SMACK_LABEL_ACCESS, 0);
 		TEST_CHECK(ret == 0, "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
-		TEST_LABEL(label, "unmapped");
-		umount_loopback(test_dirs[1].path, loop_dev);
-		free(loop_dev);
-	}
+		if (ret == 0) {
+			TEST_LABEL(label, UNMAPPED);
+			free(label);
+		}
 
+		ret = umount(test_dirs[1].path);
+		TEST_CHECK(ret == 0, "umount(): %s", strerror(errno));
+	}
 
 	/*
 	 * Scenario 4:
 	 * mount using remainging mount options
 	 */
-	for (i = 0; i < mount_opts_num; ++i) {
-		int expected_ret4[] = { 0, -1,  0, -1,   // UID = 0
-				       -1, -1, -1, -1 }; // UID = 1000
-		int expected_errno4[] = {    0, EBUSY,     0, EBUSY,   // UID = 0
-					 EBUSY, EBUSY, EBUSY, EBUSY }; // UID = 1000
-		sprintf(buf, "%s=n_l1", mount_opts[i]);
+	for (i = 0; i < ARRAY_SIZE(mount_opts); ++i) {
+		int expected_ret4[] = { 0, -1,  0, -1,   /* UID = 0 */
+				       -1, -1, -1, -1 }; /* UID = 1000 */
+		int expected_errno4[] = {    0, EPERM,     0, EPERM,   /* UID = 0 */
+		                         EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+		sprintf(buf, "%s=%s", mount_opts[i], LA(LABEL));
 		errno = 0;
-		ret = mount_loopback(test_img, test_dirs[1].path, buf, &loop_dev);
+		ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);
 		TEST_CHECK(ret == expected_ret4[env_id] && errno == expected_errno4[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 		if (ret == 0) {
-			umount_loopback(test_dirs[1].path, loop_dev);
-			free(loop_dev);
+			ret = umount(test_dirs[1].path);
+			TEST_CHECK(ret == 0, "umount(): %s", strerror(errno));
 		}
 
-		int expected_ret5[] = { 0, -1, -1, -1,   // UID = 0
-				       -1, -1, -1, -1 }; // UID = 1000
-		int expected_errno5[] = {    0, EBUSY, EBADR, EBUSY,   // UID = 0
-					 EBUSY, EBUSY, EBUSY, EBUSY }; // UID = 1000
-		sprintf(buf, "%s=unmapped", mount_opts[i]);
+		int expected_ret5[] = { 0, -1, -1, -1,   /* UID = 0 */
+				       -1, -1, -1, -1 }; /* UID = 1000 */
+		int expected_errno5[] = {    0, EPERM, EBADR, EPERM,   /* UID = 0 */
+		                         EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+		sprintf(buf, "%s=%s", mount_opts[i], UNMAPPED);
 		errno = 0;
-		ret = mount_loopback(test_img, test_dirs[1].path, buf, &loop_dev);
+		ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);
 		TEST_CHECK(ret == expected_ret5[env_id] && errno == expected_errno5[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 		if (ret == 0) {
-			umount_loopback(test_dirs[1].path, loop_dev);
-			free(loop_dev);
+			ret = umount(test_dirs[1].path);
+			TEST_CHECK(ret == 0, "umount(): %s", strerror(errno));
 		}
 	}
+
+	close_loopback(loop_dev);
+	free(loop_dev);
 
 finish:
 	test_sync(1);
@@ -327,7 +333,7 @@ finish:
 
 void main_outside_ns(void)
 {
-	init_test_resources(test_rules, NULL, test_dirs, NULL);
+	init_test_resources(NULL, test_mappings, test_dirs, NULL);
 
 	test_sync(0);
 

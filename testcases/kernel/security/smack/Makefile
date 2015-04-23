@@ -10,7 +10,7 @@ top_srcdir		?= ../../../..
 
 include $(top_srcdir)/include/mk/testcases.mk
 
-LDLIBS			:= -ldl -lltp -lcap
+LDLIBS			:= -lltp -lcap
 
 INSTALL_TARGETS		:= *.sh
 

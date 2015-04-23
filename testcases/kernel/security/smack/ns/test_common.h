@@ -19,30 +19,53 @@
 /*
  * Smack namespaces - common test case routines
  *
- * Author: Michal Witanowski <m.witanowski@samsung.com>
+ * Authors: Michal Witanowski <m.witanowski@samsung.com>
+ *          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
  */
 
 #ifndef SMACK_NAMESPACE_TEST_COMMON_H
 #define SMACK_NAMESPACE_TEST_COMMON_H
 
-#include "common.h"
+#include "smack_ns_common.h"
 #include "../smack_common.h"
+#include "../files_common.h"
+
+#define ERROR_BUFFER_SIZE 1024
+#define AMBIENT_OBJECT_LABEL "ambient"
+
+
+enum startup {
+	manual = 0,
+	automatic
+};
 
 struct test_smack_rule_desc {
 	char* subject;
 	char* object;
 	char* access;
+	enum startup startup;
 };
 
 struct test_smack_mapping_desc {
 	char* original;
 	char* mapped;
+	enum startup startup;
 };
 
 struct test_file_desc {
-	char* path;
+	char *path;
 	mode_t mode;
-	char* label;
+	char *label_access;
+	char *label_exec;
+	char *label_mmap;
+	enum file_type type;
+};
+
+struct test_dir_desc {
+	char *path;
+	mode_t mode;
+	char *label_access;
+	enum dir_flags flags;
 };
 
 /* are we inside namespaces (USER/Smack)? */
@@ -82,103 +105,56 @@ void test_cleanup(void);
 /* test failures counter */
 extern int test_fails;
 
+/*
+ * This macro will chose a correct label depending whether it's called
+ * inside or outside the Smack namespace. This way the string returned
+ * will always refer to the same internal label. E.g.:
+ * LM("will_be_floor", "_")
+ */
+#define LM(UNMAPPED, MAPPED)				\
+	(inside_ns && (env_id & TEST_ENV_SMACK_NS) ?	\
+	 MAPPED : UNMAPPED)
+
+/*
+ * This macro will works just like LM() but can be used for labels that
+ * have been created using MAPPED_LABEL_PREFIX. E.g.:
+ * LA("label1")
+ */
+#define LA(LABEL)					\
+	LM(LABEL, MAPPED_LABEL_PREFIX LABEL)
+
+
 // TODO: use "tst_resm" when migrated to LTP
-#define TEST_ERROR(...)	\
+#define TEST_ERROR(...)							      \
 	do {								      \
-		char test_error_buf[1024];				      \
-		snprintf(test_error_buf, 1024, __VA_ARGS__);		      \
+		char test_error_buf[ERROR_BUFFER_SIZE];			      \
+		snprintf(test_error_buf, ERROR_BUFFER_SIZE, __VA_ARGS__);     \
 		printf(ANSI_COLOR_RED "%d: [FAIL] %s:%d: %s" ANSI_COLOR_RESET \
 		       "\n", getpid(), __FILE__, __LINE__, test_error_buf);   \
 		fflush(stdout);						      \
 		test_fails++;						      \
 	} while(0)
 
-#define TEST_CHECK(cond, ...) \
+#define TEST_CHECK(cond, ...)			\
 	do {					\
 		if (cond)			\
 			break;			\
 		TEST_ERROR(__VA_ARGS__);	\
 	} while(0)
 
-#define TEST_LABEL(current, expected)					\
-		TEST_CHECK((current) == 0 || (expected) == 0 ||		\
-			   strcmp((current), (expected)) == 0,		\
-			   "current label = %s, expected = %s",		\
-			   current, expected)
+#define TEST_LABEL(current, expected)			\
+	TEST_CHECK(					\
+		((current) == 0 && (expected) == 0) ||	\
+		((current) != 0 && (expected) != 0 &&	\
+		 strcmp((current), (expected)) == 0),	\
+	           "current label = %s, expected = %s",	\
+	           current, expected)
 
-#define CREATED_FILE_SIZE 64
-#define CREATED_FILE_CONTENT 0xAA
-
-/*
- * Create a file with a given permissions and Smack label.
- * The file will be owned by an user of a process in namespaces.
- * The file will contain TOUCHED_FILE_SIZE bytes equal to
- * TOUCHED_FILE_CONTENT.
- */
-static inline int create_file_labeled(const char *path, mode_t mode,
-				      const char *label)
-{
-	int fd;
-	unsigned char data[CREATED_FILE_SIZE];
-
-	fd = open(path, O_CREAT | O_WRONLY, mode);
-	if (fd < 0)
-		return -1;
-
-	memset(data, CREATED_FILE_CONTENT, CREATED_FILE_SIZE);
-	if (write(fd, data, CREATED_FILE_SIZE) != CREATED_FILE_SIZE)
-		ERR_EXIT("write()");
-	close(fd);
-
-	if (!inside_ns)
-		TEST_CHECK(chown(path, uid, gid) == 0,
-			   "chown(\"%s\", %d, %d): %s", path, uid, gid,
-			   strerror(errno));
-
-	if (label != NULL)
-		TEST_CHECK(
-			smack_set_file_label(path, label, SMACK_LABEL_ACCESS, 0)
-			== 0, "smack_set_file_label(\"%s\", %o, \"%s\"): %s",
-			path, mode, label, strerror(errno));
-
-	return 0;
-}
-
-static inline int create_file(const char *path, mode_t mode)
-{
-	return create_file_labeled(path, mode, NULL);
-}
-
-/*
- * Create a directory with a given permissions and Smack label.
- * The directory will be owned by an user of a process in namespaces.
- */
-static inline int create_dir_labeled(const char* path, mode_t mode,
-				     const char* label)
-{
-	char str[256];
-	sprintf(str, "mkdir(\"%s\", %o)", path, mode);
-
-	if (mkdir(path, mode) == -1)
-		ERR_EXIT(str);
-
-	if (chown(path, uid, gid) == -1)
-		ERR_EXIT("chown()");
-
-	if (label != NULL)
-		if (smack_set_file_label(path, label, SMACK_LABEL_ACCESS, 0)
-		    == -1)
-			ERR_EXIT("smack_set_file_label()");
-
-	return 0;
-}
-
-void save_smackfs_permissions(void);
-void restore_smackfs_permissions(void);
-
+void set_smack_rule(const struct test_smack_rule_desc *rule);
+void set_smack_mapping(const struct test_smack_mapping_desc *mapping);
 void init_test_resources(const struct test_smack_rule_desc *rules,
-			 const struct test_smack_mapping_desc *labels_map,
-			 const struct test_file_desc *dirs,
+			 const struct test_smack_mapping_desc *mappings,
+			 const struct test_dir_desc *dirs,
 			 const struct test_file_desc *files);
 
 #endif // SMACK_NAMESPACE_TEST_COMMON_H
