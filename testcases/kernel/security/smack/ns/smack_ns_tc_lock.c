@@ -71,8 +71,9 @@ static struct test_file_desc test_files[] = {
 void main_inside_ns(void)
 {
 	int fd, ret;
-	int override_tab[] = {1, 0, 1, 1,
-			      0, 0, 0, 0};
+	int override_tab[] = {1, 0,
+			      0, 0,
+			      1, 0 };
 	/* is CAP_MAC_OVERRIDE granting access? */
 	int override = override_tab[env_id];
 

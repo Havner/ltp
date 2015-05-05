@@ -48,7 +48,7 @@
 #define PROC_PATH_MAX_LEN 255
 #define ACCESS_LEN 7
 #define SMACK_MNT_PATH "/smack/"
-#define SMACK_LABEL_MAP_FILE "smack_map"
+#define SMACK_LABEL_MAP_FILE "label_map"
 #define SMACK_LABEL_MAX_LEN 255
 #define LOAD_MAX_LEN (2 * (SMACK_LABEL_MAX_LEN + 1) + ACCESS_LEN)
 #define CHG_RULE_MAX_LEN (2 * (SMACK_LABEL_MAX_LEN + 1) + 2 * ACCESS_LEN + 1)
@@ -550,7 +550,7 @@ static inline int smack_set_onlycap(const char* label)
  */
 static inline int smack_get_onlycap(char** label)
 {
-	int fd, ret;
+	int fd, ret, i;
 	char value[SMACK_LABEL_MAX_LEN + 1];
 
 	fd = open(SMACK_MNT_PATH "onlycap", O_RDONLY);
@@ -567,6 +567,18 @@ static inline int smack_get_onlycap(char** label)
 	}
 
 	value[ret] = '\0';
+	/* 
+	 * TODO:
+	 * Workaround for space at the end.
+	 * Either fix kernel or do a truncate function.
+	 */
+	for(i = ret-1; i > 0; --i) {
+		if (value[i] == ' ')
+			value[i] = '\0';
+		else
+			break;
+	}
+
 	*label = strdup(value);
 	return 0;
 }
@@ -624,7 +636,7 @@ static inline int smack_map_label(pid_t pid, const char *label,
 	char path[PROC_PATH_MAX_LEN];
 	char buf[LABEL_MAPPING_LEN];
 	int ret, fd;
-	snprintf(path, PROC_PATH_MAX_LEN, "/proc/%d/" SMACK_LABEL_MAP_FILE,
+	snprintf(path, PROC_PATH_MAX_LEN, "/proc/%d/attr/" SMACK_LABEL_MAP_FILE,
 		 pid);
 
 	fd = open(path, O_WRONLY);

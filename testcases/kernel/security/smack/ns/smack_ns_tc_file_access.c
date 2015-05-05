@@ -129,10 +129,12 @@ void main_inside_ns(void)
 	/* wait for file creation and rules setup */
 	test_sync(0);
 
-	int ret_allow_access[] = {0, 0, 0, 0,
-				  0, 0, 0, 0};
-	int ret_deny_access[] =  {0,      EACCES, 0,      0,
-				  EACCES, EACCES, EACCES, EACCES};
+	int ret_allow_access[] = {0, 0,
+				  0, 0,
+				  0, 0 };
+	int ret_deny_access[] =  {0,      EACCES,
+				  EACCES, EACCES,
+				  0,      EACCES };
 
 	/*
 	 * It's important to note that for open(W) to succeed you need

@@ -30,6 +30,7 @@ INSTALL_TARGETS	+= mount_test.img
 
 CFLAGS		+= -g -O0
 LDLIBS		+= -lcap
+LDFLAGS		:= -Wl,--as-needed $(LDLIBS)
 TEST_CASES	:= $(patsubst $(abs_srcdir)/%.c,%,$(wildcard $(abs_srcdir)/smack_ns_tc_*.c))
 MAKE_TARGETS	:= smack_ns_launch
 MAKE_TARGETS	+= $(TEST_CASES)
@@ -42,6 +43,6 @@ test_common.o: test_common.c test_common.h smack_ns_common.h ../smack_common.h
 	$(CC) $(CFLAGS) -c test_common.c -o $@
 
 smack_ns_tc_%: smack_ns_tc_%.c test_common.o
-	$(CC) $(CFLAGS) $< test_common.o -o $@
+	$(CC) $(CFLAGS) $< test_common.o -o $@ $(LDFLAGS)
 
 include $(top_srcdir)/include/mk/generic_leaf_target.mk

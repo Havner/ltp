@@ -78,10 +78,12 @@ void main_inside_ns(void)
 	 * the inside process is inefective (both labels mapped, no rule
 	 * between them is a situation that CAP_MAC_OVERRIDE would deal with).
 	 */
-	int expected_ret1[] = { 0, -1,  0, -1,
-	                       -1, -1, -1, -1};
-	int expected_errno1[] = {0,      EACCES,      0, EACCES,
-				 EACCES, EACCES, EACCES, EACCES };
+	int expected_ret1[] = { 0, -1,
+			       -1, -1,
+			       -1, -1};
+	int expected_errno1[] = {0,      EACCES,
+				 EACCES, EACCES,
+				 EACCES, EACCES};
 	ret = kill(sibling_pid, SIGUSR1);
 	TEST_CHECK(ret == expected_ret1[env_id] && errno == expected_errno1[env_id],
 	           strerror(errno));
@@ -92,10 +94,12 @@ void main_inside_ns(void)
 	 * target label: "label" (no "inside label w" rule)
 	 */
 	test_sync(2);
-	int expected_ret2[] = { 0, -1,  0, -1,
-			       -1, -1, -1, -1};
-	int expected_errno2[] = {0,      EACCES,      0, EACCES,
-				 EACCES, EACCES, EACCES, EACCES };
+	int expected_ret2[] = { 0, -1,
+			       -1, -1,
+			       -1, -1};
+	int expected_errno2[] = {0,      EACCES,
+				 EACCES, EACCES,
+				 EACCES, EACCES};
 	errno = 0;
 	ret = kill(sibling_pid, SIGUSR1);
 	TEST_CHECK(ret == expected_ret2[env_id] && errno == expected_errno2[env_id],
@@ -107,8 +111,9 @@ void main_inside_ns(void)
 	 * target label: "label" (with "inside label w")
 	 */
 	test_sync(4);
-	int expected_ret3[] = {0, 0, 0, 0,
-			       0, 0, 0, 0};
+	int expected_ret3[] = {0, 0,
+			       0, 0,
+			       0, 0};
 	ret = kill(sibling_pid, SIGUSR1);
 	TEST_CHECK(ret == expected_ret3[env_id], strerror(errno));
 	test_sync(5);
@@ -118,10 +123,12 @@ void main_inside_ns(void)
 	 * target label: "unmapped" (not valid in Smack NS)
 	 */
 	test_sync(6);
-	int expected_ret4[] = {0, 0, -1, -1,
-			       0, 0, -1, -1};
-	int expected_errno4[] = {0, 0, EPERM, EPERM,
-				 0, 0, EPERM, EPERM };
+	int expected_ret4[] = { 0,  0,
+			        0,  0,
+			       -1, -1 };
+	int expected_errno4[] = {     0,      0,
+				      0,      0,
+				 EACCES, EACCES };
 	errno = 0;
 	ret = kill(sibling_pid, SIGUSR1);
 	TEST_CHECK(ret == expected_ret4[env_id] && errno == expected_errno4[env_id],

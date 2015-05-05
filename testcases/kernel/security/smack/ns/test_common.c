@@ -282,7 +282,7 @@ static void init_builtin_resources(void)
 {
 	set_smack_rules(builtin_rules);
 
-	if (env_id & TEST_ENV_SMACK_NS)
+	if ((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK)
 		set_smack_mappings(builtin_mappings);
 }
 
@@ -303,7 +303,8 @@ void init_test_resources(const struct test_smack_rule_desc *rules,
 	if (rules != NULL)
 		set_smack_rules(rules);
 
-	if ((mappings != NULL) && (env_id & TEST_ENV_SMACK_NS))
+	if (mappings != NULL &&
+	    (env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK)
 		set_smack_mappings(mappings);
 
 	if (dirs != NULL)

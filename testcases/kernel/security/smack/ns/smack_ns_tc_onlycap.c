@@ -54,8 +54,9 @@ void main_inside_ns(void)
 
 	test_sync(0);
 
-	const int expected_ret[] = { 0, -1,  0, -1,
-	                            -1, -1, -1, -1};
+	const int expected_ret[] = { 0, -1,
+				    -1, -1,
+				    -1, -1 };
 	ret = smack_set_onlycap(LA(OUTSIDE));
 	TEST_CHECK(ret == expected_ret[env_id], strerror(errno));
 
@@ -115,8 +116,9 @@ void main_outside_ns(void)
 
 	test_sync(1);
 
-	const char *expexted_label[] = {OUTSIDE, "", OUTSIDE, "",
-	                                     "", "",      "", ""};
+	const char *expexted_label[] = {OUTSIDE, "",
+					     "", "",
+					     "", "" };
 	ret = smack_get_onlycap(&label);
 	TEST_CHECK(ret == 0, strerror(errno));
 	if (ret == 0) {

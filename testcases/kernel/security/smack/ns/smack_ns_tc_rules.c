@@ -74,10 +74,12 @@ void main_inside_ns(void)
 	/*
 	 * Unmapped labels
 	 */
-	int expected_ret[] = { 0, -1, -1, -1,	/* UID = 0 */
-			      -1, -1, -1, -1 };	/* UID = 1000 */
-	int expected_errno[] = {    0, EPERM, EBADR, EPERM,   /* UID = 0 */
-				EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret[] = { 0, -1,
+			      -1, -1,
+			      -1, -1 };
+	int expected_errno[] = {    0, EPERM,
+				EPERM, EPERM,
+				EPERM, EPERM };
 
 	errno = 0;
 	ret = smack_set_rule(UNMAPPED1, UNMAPPED2, "rwx");
@@ -93,19 +95,23 @@ void main_inside_ns(void)
 	/*
 	 * Mapped labels
 	 */
-	int expected_ret2[] = { 0, -1,  0, -1,	 /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno2[] = {    0, EPERM,     0, EPERM,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret2[] = { 0, -1,
+			       -1, -1,
+			       -1, -1 };
+	int expected_errno2[] = {    0, EPERM,
+				 EPERM, EPERM,
+				 EPERM, EPERM };
 	errno = 0;
 	ret = smack_set_rule(LA(LABEL1), LA(LABEL2), "rwx");
 	TEST_CHECK(ret == expected_ret2[env_id] && errno == expected_errno2[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
-	int expected_ret3[] = { 0, -1,  0, -1,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno3[] = {    0, EPERM, 0,     EPERM,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret3[] = { 0, -1,
+			       -1, -1,
+			       -1, -1 };
+	int expected_errno3[] = {    0, EPERM,
+				 EPERM, EPERM,
+				 EPERM, EPERM };
 	errno = 0;
 	ret = smack_revoke_subject(LA(LABEL1));
 	TEST_CHECK(ret == expected_ret3[env_id] && errno == expected_errno3[env_id],
@@ -117,18 +123,21 @@ void main_inside_ns(void)
 	TEST_CHECK(ret == expected_ret3[env_id] && errno == expected_errno3[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
-	int expected_access0[] = {0, 0, 0, 0,   /* UID = 0 */
-				  0, 0, 0, 0 }; /* UID = 1000 */
+	int expected_access0[] = {0, 0,
+				  0, 0,
+				  0, 0};
 	ret = smack_have_access(LA(LABEL0), LA(LABEL1), "r");
 	TEST_CHECK(ret == expected_access0[env_id], "ret = %d, %s", ret, strerror(errno));
 
 	/*
 	 * Unmapped labels access check
 	 */
-	int expected_access1[] = {1, 1, 0, 0,  /* UID = 0 */
-				  1, 1, 0, 0}; /* UID = 1000 */
-	int expected_access2[] = {0, 0, 0, 0,
-				  0, 0, 0, 0 };
+	int expected_access1[] = {1, 1,
+				  1, 1,
+				  0, 0};
+	int expected_access2[] = {0, 0,
+				  0, 0,
+				  0, 0};
 	ret = smack_have_access(UNMAPPED1, "_", "rx");
 	TEST_CHECK(ret == expected_access1[env_id], "ret = %d, %s", ret, strerror(errno));
 	ret = smack_have_access(UNMAPPED1, "_", "wlt");
@@ -137,10 +146,12 @@ void main_inside_ns(void)
 	/*
 	 * Mapped labels access check
 	 */
-	int expected_access3[] = {1, 1, 1, 1,   /* UID = 0 */
-				  1, 1, 1, 1 }; /* UID = 1000 */
-	int expected_access4[] = {0, 0, 0, 0,
-				  0, 0, 0, 0};
+	int expected_access3[] = {1, 1,
+				  1, 1,
+				  1, 1};
+	int expected_access4[] = {0, 0,
+				  0, 0,
+				  0, 0};
 	ret = smack_have_access(LA(LABEL1), "_", "rx");
 	TEST_CHECK(ret == expected_access3[env_id], "ret = %d, %s", ret, strerror(errno));
 	ret = smack_have_access(LA(LABEL1), "_", "wlt");
@@ -149,10 +160,12 @@ void main_inside_ns(void)
 	/*
 	 * Invalid label test
 	 */
-	int expected_ret4[] = {-1, -1, -1, -1,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno4[] = {EINVAL, EPERM, EINVAL, EPERM,  /* UID = 0 */
-				 EPERM,  EPERM,  EPERM, EPERM}; /* UID = 1000 */
+	int expected_ret4[] = {-1, -1,
+			       -1, -1,
+			       -1, -1};
+	int expected_errno4[] = {EINVAL, EPERM,
+				 EPERM,  EPERM,
+				 EPERM,  EPERM};
 	errno = 0;
 	ret = smack_set_rule("-", "_", "rwx");
 	TEST_CHECK(ret == expected_ret4[env_id] && errno == expected_errno4[env_id],
@@ -164,18 +177,21 @@ void main_inside_ns(void)
 
 	test_sync(2);
 
-	int expected_access5[] = {1, 1, 1, 1,   /* UID = 0 */
-				  1, 1, 1, 1 }; /* UID = 1000 */
+	int expected_access5[] = {1, 1,
+				  1, 1,
+				  1, 1};
 	ret = smack_have_access(LA(LABEL3), LA(LABEL4), "rwx");
 	TEST_CHECK(ret == expected_access5[env_id], "ret = %d, %s", ret, strerror(errno));
 
 	/*
 	 * Revoke subject test
 	 */
-	int expected_ret5[] = { 0, -1,  0, -1,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno5[] = {    0, EPERM,	   0, EPERM,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret5[] = { 0, -1,
+			       -1, -1,
+			       -1, -1 };
+	int expected_errno5[] = {    0, EPERM,
+				 EPERM, EPERM,
+				 EPERM, EPERM };
 	errno = 0;
 	ret = smack_revoke_subject(LA(LABEL3));
 	TEST_CHECK(ret == expected_ret5[env_id] && errno == expected_errno5[env_id],
@@ -185,8 +201,9 @@ void main_inside_ns(void)
 	TEST_CHECK(ret == expected_ret5[env_id] && errno == expected_errno5[env_id],
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
-	int expected_access6[] = {0, 1, 0, 1,   /* UID = 0 */
-				  1, 1, 1, 1 }; /* UID = 1000 */
+	int expected_access6[] = {0, 1,
+				  1, 1,
+				  1, 1};
 	ret = smack_have_access(LA(LABEL3), LA(LABEL4), "rwx");
 	TEST_CHECK(ret == expected_access6[env_id], "ret = %d, %s", ret, strerror(errno));
 

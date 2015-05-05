@@ -79,7 +79,7 @@ void main_inside_ns(void)
 	 * Scenario 1:
 	 * At this point default rules are unmapped (except '_')
 	 */
-	if (env_id & TEST_ENV_SMACK_NS) {
+	if ((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK) {
 		ret = smack_get_access("_", LA(LABEL1));
 		TEST_CHECK(ret == 0, "ret = %d, %s", ret, strerror(errno));
 		ret = smack_get_access(LA(LABEL1), "_");
@@ -110,7 +110,7 @@ void main_inside_ns(void)
 	 * At this point default labels are mapped,
 	 * so they will behave as expected.
 	 */
-	if (env_id & TEST_ENV_SMACK_NS) {
+	if ((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK) {
 		ret = smack_get_access(LA(LABEL1), "_");
 		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_EXE),
 			   "ret = %d, %s", ret, strerror(errno));
@@ -154,7 +154,7 @@ void main_inside_ns(void)
 	 * Scenario 3:
 	 * At this point default labels gained additional accesses.
 	 */
-	if (env_id & TEST_ENV_SMACK_NS) {
+	if ((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK) {
 		ret = smack_get_access(LA(LABEL1), "_");
 		TEST_CHECK(ret == (ACCESS_ANYREAD | ACCESS_EXE),
 			   "ret = %d, %s", ret, strerror(errno));
@@ -185,7 +185,7 @@ void main_outside_ns(void)
 	/* Scenario 1 */
 
 	test_sync(1);
-	if (env_id & TEST_ENV_SMACK_NS) {
+	if ((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK) {
 		set_smack_mapping(&test_mappings[3]);
 		set_smack_mapping(&test_mappings[4]);
 		set_smack_mapping(&test_mappings[5]);

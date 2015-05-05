@@ -85,6 +85,7 @@ void main_inside_ns(void)
 	int ret, port_num = 0;
 	socklen_t len;
 	char *label = NULL;
+	int smack_ns = ((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK);
 
 	/* setup server address */
 	memset(&svaddr, 0, sizeof(struct sockaddr_in));
@@ -126,9 +127,9 @@ void main_inside_ns(void)
 	errno = 0;
 	len = sizeof(claddr);
 	clsock = accept(svsock, (struct sockaddr *)&claddr, &len);
-	TEST_CHECK(env_id & TEST_ENV_SMACK_NS ? clsock == -1 : clsock != -1 &&
-	           env_id & TEST_ENV_SMACK_NS ? errno == EAGAIN : errno == 0,
-	           "accept(): %s", strerror(errno));
+	TEST_CHECK(smack_ns ? clsock == -1 : clsock != -1 &&
+		   smack_ns ? errno == EAGAIN : errno == 0,
+		   "accept(): %s", strerror(errno));
 	close(clsock);
 
 	/*
@@ -151,7 +152,7 @@ void main_inside_ns(void)
 	TEST_CHECK(ret != -1, "read(): %s", strerror(errno));
 
 	/*
-	 * TODO:
+	 * TODO: The following test is disabled. Something's wrong.
 	 */
 #if 0
 	/*
@@ -181,10 +182,12 @@ void main_inside_ns(void)
 	 * Socket relabeling inside NS:
 	 * Try to set IPIN label to an unmapped label
 	 */
-	int exp_ret1[] = { 0, -1, -1, -1,
-			  -1, -1, -1, -1 };
-	int exp_errno1[] = {    0, EPERM, EBADR, EBADR,
-			    EPERM, EPERM, EPERM, EPERM};
+	int exp_ret1[] = { 0, -1,
+			  -1, -1,
+			  -1, -1 };
+	int exp_errno1[] = {    0, EPERM,
+			    EPERM, EPERM,
+			    EBADR, EPERM };
 	errno = 0;
 	ret = smack_set_fd_label(clsock, UNMAPPED, SMACK_LABEL_IPIN);
 	TEST_CHECK(ret == exp_ret1[env_id] && errno == exp_errno1[env_id],
@@ -195,10 +198,12 @@ void main_inside_ns(void)
 	 * Socket relabeling inside NS:
 	 * Set IPIN label to a mapped label
 	 */
-	int exp_ret2[] = { 0, -1,  0,  0,
-			  -1, -1, -1, -1 };
-	int exp_errno2[] = {    0, EPERM,     0,     0,
-			    EPERM, EPERM, EPERM, EPERM };
+	int exp_ret2[] = { 0, -1,
+			  -1, -1,
+			   0, -1 };
+	int exp_errno2[] = {    0, EPERM,
+			    EPERM, EPERM,
+				0, EPERM };
 	errno = 0;
 	ret = smack_set_fd_label(clsock, LA(LABEL), SMACK_LABEL_IPIN);
 	TEST_CHECK(ret == exp_ret2[env_id] && errno == exp_errno2[env_id],
@@ -271,10 +276,12 @@ void main_outside_ns(void)
 	 * client sends packets with unmapped label with "w" access
 	 * - connecting should fail only in environment using LSM NS
 	 */
-	int exp_ret1[] = {0, 0, -1, -1,
-			  0, 0, -1, -1 };
-	int exp_errno1[] = {0, 0, EINPROGRESS, EINPROGRESS,
-			    0, 0, EINPROGRESS, EINPROGRESS};
+	int exp_ret1[] = { 0,  0,
+			   0,  0,
+			  -1, -1 };
+	int exp_errno1[] = {          0,           0,
+			              0,           0,
+			    EINPROGRESS, EINPROGRESS };
 	sfd = create_client_socket();
 	ret = smack_set_fd_label(sfd, CLIENT_UNMAPPED, SMACK_LABEL_IPIN);
 	TEST_CHECK(ret != -1, "smack_set_fd_label(): %s", strerror(errno));

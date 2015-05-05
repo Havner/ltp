@@ -32,12 +32,23 @@
 #define CLONE_NEWLSM 0x00001000
 #endif
 
-/* test environment flags (8 combinations total) */
-#define TEST_ENV_USER_NS	(1 << 0)
-#define TEST_ENV_SMACK_NS	(1 << 1)
-#define TEST_ENV_NON_ROOT	(1 << 2)
-#define TOTAL_TEST_ENVS		((TEST_ENV_USER_NS | TEST_ENV_SMACK_NS \
-				| TEST_ENV_NON_ROOT) + 1)
+/*
+ * test environment bits (6 combinations total):
+ * bit 0:    root/regular user
+ * bits 1-2: no_ns/user_ns/smack_ns
+ */
+#define TEST_ENV_USER_SHIFT	0
+#define TEST_ENV_USER_MASK	(1 << TEST_ENV_USER_SHIFT)
+#define TEST_ENV_USER_ROOT	(0 << TEST_ENV_USER_SHIFT)
+#define TEST_ENV_USER_REGULAR	(1 << TEST_ENV_USER_SHIFT)
+
+#define TEST_ENV_NS_SHIFT	1
+#define TEST_ENV_NS_MASK	(3 << TEST_ENV_NS_SHIFT)
+#define TEST_ENV_NS_NONE	(0 << TEST_ENV_NS_SHIFT)
+#define TEST_ENV_NS_USER	(1 << TEST_ENV_NS_SHIFT)
+#define TEST_ENV_NS_SMACK	(2 << TEST_ENV_NS_SHIFT)
+
+#define TOTAL_TEST_ENVS		6
 
 /* test case exit codes */
 #define TEST_EXIT_USAGE	1

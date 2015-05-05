@@ -85,10 +85,12 @@ void main_inside_ns(void)
 	/*
 	 * Try to set mapped label
 	 */
-	int exp_ret1[] = { 0, -1,  0, -1,
-			  -1, -1, -1, -1 };
-	int exp_errno1[] = {0,     EPERM,     0, EPERM,
-			    EPERM, EPERM, EPERM, EPERM };
+	int exp_ret1[] = { 0, -1,
+			  -1, -1,
+			  -1, -1 };
+	int exp_errno1[] = {0,     EPERM,
+			    EPERM, EPERM,
+			    EPERM, EPERM };
 	errno = 0;
 	ret = smack_set_ambient(LA(LABEL));
 	TEST_CHECK(ret == exp_ret1[env_id] && errno == exp_errno1[env_id],
@@ -97,10 +99,12 @@ void main_inside_ns(void)
 	/*
 	 * Try to set unmapped label
 	 */
-	int exp_ret2[] = { 0, -1, -1, -1,
-			  -1, -1, -1, -1 };
-	int exp_errno2[] = {0,     EPERM, EBADR, EPERM,
-			    EPERM, EPERM, EPERM, EPERM };
+	int exp_ret2[] = { 0, -1,
+			  -1, -1,
+			  -1, -1 };
+	int exp_errno2[] = {0,     EPERM,
+			    EPERM, EPERM,
+			    EPERM, EPERM };
 	errno = 0;
 	ret = smack_set_ambient(UNMAPPED);
 	TEST_CHECK(ret == exp_ret2[env_id] && errno == exp_errno2[env_id],

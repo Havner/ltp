@@ -258,14 +258,19 @@ static void parse_arguments(int argc, char *argv[])
 
 	/* Categorize test environment ID. */
 	test_environment_id = 0;
-	if (args.smack_ns)
-		test_environment_id |= TEST_ENV_SMACK_NS;
-	if (args.user_ns) {
-		test_environment_id |= TEST_ENV_USER_NS;
-		if (args.mapped_uid != 0)
-			test_environment_id |= TEST_ENV_NON_ROOT;
-	} else if (args.uid != 0)
-		test_environment_id |= TEST_ENV_NON_ROOT;
+
+	/* smack_ns implies user_ns */
+	if (args.smack_ns) {
+		test_environment_id |= TEST_ENV_NS_SMACK;
+		args.user_ns = 1;
+	} else if (args.user_ns) {
+		test_environment_id |= TEST_ENV_NS_USER;
+	}
+
+	if (args.user_ns && args.mapped_uid != 0)
+		test_environment_id |= TEST_ENV_USER_REGULAR;
+	else if (!args.user_ns && args.uid != 0)
+		test_environment_id |= TEST_ENV_USER_REGULAR;
 
 	// TODO: remove in the final version
 	printf("===========================================================\n");
@@ -447,8 +452,8 @@ int main(int argc, char *argv[])
 
 		if (args.user_ns)
 			unshare_flags |= CLONE_NEWUSER;
-		if (args.smack_ns)
-			unshare_flags |= CLONE_NEWLSM;
+		//if (args.smack_ns)
+		//	unshare_flags |= CLONE_NEWLSM;
 		unshare_flags |= CLONE_NEWNS; /* mount namespace */
 
 		/* enter namespaces */

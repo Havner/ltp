@@ -87,11 +87,13 @@ void main_inside_ns(void)
 	test_sync(0);
 
 	/* Verify file labels */
-	/*		       -   U   L  U+L   */
-	int expected_ret[] = { 0, -1,  0,  0,   /* UID = 0 */
-			      -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno1[] = {     0, EACCES,      0,      0,   /* UID = 0 */
-				 EACCES, EACCES, EACCES, EACCES }; /* UID = 1000 */
+	/*		  UID: 0, 1000 */
+	int expected_ret[] = { 0, -1,   /* No NS */
+			      -1, -1,   /* User NS */
+			       0, -1 }; /* Smack NS */
+	int expected_errno1[] = {     0, EACCES,
+				 EACCES, EACCES,
+				      0, EACCES };
 
 	errno = 0;
 	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_ACCESS, 0);
@@ -122,10 +124,12 @@ void main_inside_ns(void)
 
 
 	/* this time the file got "_" label in Smack NS, so we can access it */
-	int expected_ret2[] = { 0, -1, 0,  0,
-			       -1, -1, 0,  0};
-	int expected_errno2[] = {     0, EACCES, 0, 0,   /* UID = 0 */
-				 EACCES, EACCES, 0, 0 }; /* UID = 1000 */
+	int expected_ret2[] = { 0, -1,
+			       -1, -1,
+				0,  0 };
+	int expected_errno2[] = {     0, EACCES,
+				 EACCES, EACCES,
+				      0,      0 };
 
 	errno = 0;
 	ret = smack_get_file_label(TEST_PATH2, &label, SMACK_LABEL_ACCESS, 0);
@@ -173,10 +177,12 @@ void main_inside_ns(void)
 
 	/* Now modify labels inside ns */
 
-	int expected_ret3[] = { 0, -1,  0,  0,
-			       -1, -1, -1, -1};
-	int expected_errno3[] = {    0, EPERM,     0,     0,
-				 EPERM, EPERM, EPERM, EPERM };
+	int expected_ret3[] = { 0, -1,
+			       -1, -1,
+				0, -1 };
+	int expected_errno3[] = {    0, EPERM,
+				 EPERM, EPERM,
+				     0, EPERM };
 
 	errno = 0;
 	ret = smack_set_file_label(TEST_PATH1, LA(LABEL4), SMACK_LABEL_ACCESS, 0);
@@ -191,10 +197,12 @@ void main_inside_ns(void)
 
 	/* Try unmapped labels */
 
-	int expected_ret4[] = { 0, -1, -1, -1,
-			       -1, -1, -1, -1};
-	int expected_errno4[] = {    0, EPERM, EBADR, EBADR,
-				 EPERM, EPERM, EPERM, EPERM };
+	int expected_ret4[] = { 0, -1,
+			       -1, -1,
+			       -1, -1 };
+	int expected_errno4[] = {    0, EPERM,
+				 EPERM, EPERM,
+				 EBADR, EPERM };
 
 	errno = 0;
 	ret = smack_set_file_label(TEST_PATH1, UNMAPPED, SMACK_LABEL_ACCESS, 0);
@@ -214,10 +222,12 @@ void main_inside_ns(void)
 
 	/* remove file label */
 
-	int expected_ret5[] = { 0, -1,  0,  0,
-			       -1, -1, -1, -1};
-	int expected_errno5[] = {    0, EPERM,     0,     0,
-				 EPERM, EPERM, EPERM, EPERM };
+	int expected_ret5[] = { 0, -1,
+			       -1, -1,
+				0, -1 };
+	int expected_errno5[] = {    0, EPERM,
+				 EPERM, EPERM,
+				     0, EPERM };
 
 	errno = 0;
 	ret = smack_set_file_label(TEST_PATH1, NULL, SMACK_LABEL_ACCESS, 0);
@@ -238,8 +248,9 @@ void main_outside_ns(void)
 	/* wait for checks... */
 	test_sync(1);
 
-	const char* exp_label[] = {UNMAPPED, LABEL1, LABEL4, LABEL4,
-				     LABEL1, LABEL1, LABEL1, LABEL1};
+	const char* exp_label[] = {UNMAPPED, LABEL1,
+				     LABEL1, LABEL1,
+				     LABEL4, LABEL1 };
 	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
 	if (ret == 0) {
@@ -247,8 +258,9 @@ void main_outside_ns(void)
 		free(label);
 	}
 
-	const char* exp_label2[] = {UNMAPPED, INSIDE, LABEL1, LABEL1,
-	                              INSIDE, INSIDE, INSIDE, INSIDE};
+	const char* exp_label2[] = {UNMAPPED, INSIDE,
+				      INSIDE, INSIDE,
+				      LABEL1, INSIDE };
 	ret = smack_get_process_label(sibling_pid, &label);
 	TEST_CHECK(ret == 0, "smack_get_process_label(): %s", strerror(errno));
 	if (ret == 0) {
@@ -261,8 +273,9 @@ void main_outside_ns(void)
 	// TODO: this test is broken because removing labels in Smack does not
 	// work properly right now
 #if 0
-	const char* exp_label3[] = {   "_", LABEL1,    "_",     "_",
-	                            LABEL1, LABEL1, LABEL1, LABEL1};
+	const char* exp_label3[] = {   "_", LABEL1,
+				    LABEL1, LABEL1,
+				       "_", LABEL1 };
 	ret = smack_get_file_label(TEST_PATH1, &label, SMACK_LABEL_ACCESS, 0);
 	TEST_CHECK(ret == 0, "smack_get_file_label(): %s", strerror(errno));
 	if (ret == 0) {

@@ -101,6 +101,7 @@ static int helper_receive(int sfd, int id, struct sockaddr_in *claddr,
 	char buf[MAX_MSG_SIZE], expected_buf[MAX_MSG_SIZE];
 	snprintf(expected_buf, MAX_MSG_SIZE, "message%d", id);
 
+	errno = 0;
 	test_sync(id);
 	len = sizeof(struct sockaddr_in);
 	numBytes = recvfrom(sfd, buf, MAX_MSG_SIZE, 0,
@@ -127,6 +128,7 @@ void main_inside_ns(void)
 	/* wait for sibling to start the server */
 	test_sync(0);
 
+	errno = 0;
 	sfd = socket(AF_INET, SOCK_DGRAM, 0);
 	TEST_CHECK(sfd != -1, "socket(): %s", strerror(errno));
 	set_socket_options(sfd);
@@ -138,43 +140,66 @@ void main_inside_ns(void)
 	ret = inet_aton(SERVER_ADDRESS, &svaddr.sin_addr);
 	TEST_CHECK(ret == 0, "inet_aton(): %s", strerror(errno));
 
+	/*
+	 * TEST 1
+	 */
+
 	/* Send a message to the server */
 	helper_send(sfd, 1, &svaddr);
 
+	/*
+	 * TEST 2
+	 */
 
 	/* Receive a message from the server */
 	numBytes = helper_receive(sfd, 2, NULL, NULL);
 	TEST_CHECK(numBytes > 0, "recvfrom(): %s, numBytes = %zd",
 		   strerror(errno), numBytes);
 
+	/*
+	 * ADDITIONAL TEST
+	 */
+
 	/* Try to set IPIN label to an unmapped label */
-	int exp_ret1[] = { 0, -1, -1, -1,
-			  -1, -1, -1, -1 };
-	int exp_errno1[] = {    0, EPERM, EBADR, EBADR,
-			    EPERM, EPERM, EPERM, EPERM};
+	int exp_ret1[] = { 0, -1,
+			  -1, -1,
+			  -1, -1 };
+	int exp_errno1[] = {    0, EPERM,
+			    EPERM, EPERM,
+			    EBADR, EPERM };
 	errno = 0;
 	ret = smack_set_fd_label(sfd, UNMAPPED, SMACK_LABEL_IPIN);
 	TEST_CHECK(ret == exp_ret1[env_id] && errno == exp_errno1[env_id],
 		   "smack_set_fd_label(): %s", strerror(errno));
 
+	/*
+	 * TEST 3
+	 */
 
 	/*
 	 * Set IPIN label to a mapped label: object of our socket will be "l1"
 	 * label visible from init ns.
 	 */
-	int exp_ret2[] = { 0, -1,  0,  0,
-			  -1, -1, -1, -1 };
-	int exp_errno2[] = {    0, EPERM,     0,     0,
-			    EPERM, EPERM, EPERM, EPERM };
+	int exp_ret2[] = { 0, -1,
+			  -1, -1,
+			   0, -1 };
+	int exp_errno2[] = {    0, EPERM,
+			    EPERM, EPERM,
+				0, EPERM };
 	errno = 0;
 	ret = smack_set_fd_label(sfd, LA(LABEL1), SMACK_LABEL_IPIN);
 	TEST_CHECK(ret == exp_ret2[env_id] && errno == exp_errno2[env_id],
 		   "smack_set_fd_label(): %s", strerror(errno));
+
 	/* Receive a message from the server */
 	numBytes = helper_receive(sfd, 3, NULL, NULL);
 	TEST_CHECK(numBytes > 0, "recvfrom(): %s, numBytes = %zd",
 		   strerror(errno), numBytes);
 
+
+	/*
+	 * TEST 4
+	 */
 
 	/*
 	 * Set IPIN label to a mapped label: object of our socket will be "l2"
@@ -185,15 +210,20 @@ void main_inside_ns(void)
 	TEST_CHECK(ret == exp_ret2[env_id] && errno == exp_errno2[env_id],
 		   "smack_set_fd_label(): %s", strerror(errno));
 
-	// TODO: why the ret codes look the way they do?
-	/* Receive a message from the server */
-	int exp_errno3[] = {EAGAIN, EPERM, EAGAIN, EAGAIN,
-			    EPERM,  EPERM, EPERM,  EPERM };
+	/*
+	 * Receive a message from the server
+	 * Only in case of env == 0 and env == 4 we succeded with label setting
+	 */
+	int exp_errno3[] = {EAGAIN, 0,
+			    0,      0,
+			    EAGAIN, 0};
 	numBytes = helper_receive(sfd, 4, NULL, NULL);
 	TEST_CHECK(errno == exp_errno3[env_id],
 	           "recvfrom(): %s, numBytes = %zd", strerror(errno), numBytes);
 
-
+	/*
+	 * TEST 5
+	 */
 
 	/* Try to set IPOUT label to an unmapped label */
 	errno = 0;
@@ -210,6 +240,10 @@ void main_inside_ns(void)
 	/* this packet will reach destination, because we have rule */
 	helper_send(sfd, 5, &svaddr);
 
+	/*
+	 * TEST 6
+	 */
+
 	/* Set IPOUT label to a mapped label */
 	errno = 0;
 	ret = smack_set_fd_label(sfd, LA(LABEL2), SMACK_LABEL_IPOUT);
@@ -220,16 +254,19 @@ void main_inside_ns(void)
 	helper_send(sfd, 6, &svaddr);
 
 
-	/* now incomming packet will have "unmapped" label. */
+	/*
+	 * TEST 7
+	 */
 
+	/* now incomming packet will have "unmapped" label. */
 	ret = smack_set_fd_label(sfd, LA(INSIDE), SMACK_LABEL_IPIN);
 	TEST_CHECK(ret == exp_ret2[env_id] && errno == exp_errno2[env_id],
 		   "smack_set_fd_label(): %s", strerror(errno));
 
-	// TODO: why the ret codes look the way they do?
 	/* Receive a message from the server */
-	int exp_errno4[] = {    0, EPERM, EAGAIN, EAGAIN,
-			    EPERM, EPERM, EAGAIN, EAGAIN};
+	int exp_errno4[] = {     0,      0,
+			         0,      0,
+			    EAGAIN, EAGAIN };
 	numBytes = helper_receive(sfd, 7, NULL, NULL);
 	TEST_CHECK(errno == exp_errno4[env_id],
 		   "recvfrom(): %s, numBytes = %zd", strerror(errno), numBytes);
@@ -269,19 +306,31 @@ void main_outside_ns(void)
 	test_sync(0);
 
 	/*
+	 * TEST 1
 	 * Receive a message form the client.
 	 */
 	numBytes = helper_receive(sfd, 1, &claddr, &len);
 	TEST_CHECK(numBytes > 0, "recvfrom(): %s, numBytes = %zd",
 		   strerror(errno), numBytes);
 
-
+	/*
+	 * TEST 2
+	 */
 	helper_send(sfd, 2, &claddr);
+
+	/*
+	 * TEST 3
+	 */
 	helper_send(sfd, 3, &claddr);
+
+	/*
+	 * TEST 4
+	 */
 	helper_send(sfd, 4, &claddr);
 
 
 	/*
+	 * TEST 5
 	 * IPOUT label of a socket is being changed in the client now...
 	 */
 
@@ -290,17 +339,20 @@ void main_outside_ns(void)
 	TEST_CHECK(numBytes > 0, "recvfrom(): %s, numBytes = %zd",
 		   strerror(errno), numBytes);
 
-
-	// TODO: why the ret codes are the way they are?
-	/* Receive a message form the client */
-	int exp_errno1[] = {EAGAIN, 0, EAGAIN, EAGAIN,
-			    0,      0, 0,      0      };
+	/*
+	 * TEST 6
+	 * Receive a message form the client
+	 * Only in env == 0 and env == 4 the IPOUT has been succesdully changed.
+	 */
+	int exp_errno1[] = {EAGAIN, 0,
+			    0,      0,
+			    EAGAIN, 0};
 	numBytes = helper_receive(sfd, 6, NULL, NULL);
 	TEST_CHECK(errno == exp_errno1[env_id], "recvfrom(): %s, "
 	           "numBytes = %zd", strerror(errno), numBytes);
 
-
 	/*
+	 * TEST 7
 	 * Change label of outgoing to an unmapped.
 	 */
 	ret = smack_set_fd_label(sfd, UNMAPPED, SMACK_LABEL_IPOUT);

@@ -110,8 +110,9 @@ void main_inside_ns(void)
 	TEST_CHECK(fd != -1, "open() failed: %s", strerror(errno));
 	errno = 0;
 	map = mmap(NULL, REGULAR_FILE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0);
-	int expected_mmap_0[] = {0, 0, 0, 0,   /* UID = 0 */
-				 0, 0, 0, 0 }; /* UID = 1000 */
+	int expected_mmap_0[] = {0, 0,
+				 0, 0,
+				 0, 0};
 	TEST_CHECK(-(map == MAP_FAILED) == expected_mmap_0[env_id],
 			   "mmap(): %s", strerror(errno));
 	if (map != MAP_FAILED)
@@ -123,10 +124,12 @@ void main_inside_ns(void)
 	TEST_CHECK(fd != -1, "open() failed: %s", strerror(errno));
 	errno = 0;
 	map = mmap(NULL, REGULAR_FILE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0);
-	int expected_mmap_1[] = {0, 0, -1, -1,   /* UID = 0 */
-				 0, 0, -1, -1 }; /* UID = 1000 */
-	int expected_errno_1[] = {0, 0, EPERM, EPERM,   /* UID = 0 */
-				  0, 0, EPERM, EPERM }; /* UID = 1000 */
+	int expected_mmap_1[] = { 0,  0,
+				  0,  0,
+				 -1, -1};
+	int expected_errno_1[] = {     0,      0,
+				       0,      0,
+				  EACCES, EACCES};
 	TEST_CHECK(-(map == MAP_FAILED) == expected_mmap_1[env_id] &&
 		   errno == expected_errno_1[env_id],
 		   "mmap() = %s", strerror(errno));
@@ -143,10 +146,12 @@ void main_inside_ns(void)
 	TEST_CHECK(fd != -1, "open() failed: %s", strerror(errno));
 	errno = 0;
 	map = mmap(NULL, REGULAR_FILE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0);
-	int expected_mmap_2[] = {-1, -1, -1, -1,   /* UID = 0 */
-				 -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno_2[] = {EACCES, EACCES, EACCES, EACCES,   /* UID = 0 */
-				  EACCES, EACCES, EACCES, EACCES }; /* UID = 1000 */
+	int expected_mmap_2[] = {-1, -1,
+				 -1, -1,
+				 -1, -1};
+	int expected_errno_2[] = {EACCES, EACCES,
+				  EACCES, EACCES,
+				  EACCES, EACCES};
 	TEST_CHECK(-(map == MAP_FAILED) == expected_mmap_2[env_id] &&
 		   errno == expected_errno_2[env_id],
 		   "mmap() = %s", strerror(errno));
@@ -159,10 +164,12 @@ void main_inside_ns(void)
 	TEST_CHECK(fd != -1, "open() failed: %s", strerror(errno));
 	errno = 0;
 	map = mmap(NULL, REGULAR_FILE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0);
-	int expected_mmap_3[] = {-1, -1, -1, -1,   /* UID = 0 */
-				 -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno_3[] = {EACCES, EACCES, EPERM, EPERM,   /* UID = 0 */
-				  EACCES, EACCES, EPERM, EPERM }; /* UID = 1000 */
+	int expected_mmap_3[] = {-1, -1,
+				 -1, -1,
+				 -1, -1};
+	int expected_errno_3[] = {EACCES, EACCES,
+				  EACCES, EACCES,
+				  EACCES, EACCES};
 	TEST_CHECK(-(map == MAP_FAILED) == expected_mmap_3[env_id] &&
 		   errno == expected_errno_3[env_id],
 		   "mmap() = %s", strerror(errno));

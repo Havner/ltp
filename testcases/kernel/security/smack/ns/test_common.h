@@ -111,9 +111,9 @@ extern int test_fails;
  * will always refer to the same internal label. E.g.:
  * LM("will_be_floor", "_")
  */
-#define LM(UNMAPPED, MAPPED)				\
-	(inside_ns && (env_id & TEST_ENV_SMACK_NS) ?	\
-	 MAPPED : UNMAPPED)
+#define LM(UNMAPPED, MAPPED)						 \
+	(inside_ns && ((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK) \
+	? MAPPED : UNMAPPED)
 
 /*
  * This macro will works just like LM() but can be used for labels that

@@ -35,12 +35,10 @@ else
 fi
 
 COMMANDS='./smack_ns_launch --uid=0
-./smack_ns_launch -I --uid=1000 --mapped-uid=0
-./smack_ns_launch -S --uid=0
-./smack_ns_launch -IS --uid=1000 --mapped-uid=0
 ./smack_ns_launch --uid=1000
+./smack_ns_launch -I --uid=1000 --mapped-uid=0
 ./smack_ns_launch -I --uid=1000 --mapped-uid=5000
-./smack_ns_launch -S --uid=1000
+./smack_ns_launch -IS --uid=1000 --mapped-uid=0
 ./smack_ns_launch -IS --uid=1000 --mapped-uid=5000'
 
 FAILED=""

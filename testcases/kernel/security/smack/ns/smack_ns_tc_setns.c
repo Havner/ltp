@@ -49,7 +49,7 @@ static const struct test_smack_mapping_desc test_mappings[] = {
 
 void main_inside_ns(void)
 {
-	if (!(env_id & TEST_ENV_SMACK_NS))
+	if ((env_id & TEST_ENV_NS_MASK) != TEST_ENV_NS_SMACK)
 		return;
 
 	/* helper process will enter the namespace here */
@@ -64,7 +64,7 @@ void main_outside_ns(void)
 
 	init_test_resources(NULL, test_mappings, NULL, NULL);
 
-	if (!(env_id & TEST_ENV_SMACK_NS))
+	if ((env_id & TEST_ENV_NS_MASK) != TEST_ENV_NS_SMACK)
 		return;
 
 	child = fork();
@@ -77,7 +77,7 @@ void main_outside_ns(void)
 		char* label = NULL;
 		char path[NS_PATH_SIZE];
 
-		snprintf(path, NS_PATH_SIZE, "/proc/%d/ns/lsm", sibling_pid);
+		snprintf(path, NS_PATH_SIZE, "/proc/%d/ns/user", sibling_pid);
 		fd = open(path, O_RDONLY);
 		TEST_CHECK(fd != -1, "open(): %s", strerror(errno));
 
@@ -86,11 +86,11 @@ void main_outside_ns(void)
 		TEST_CHECK(ret == 0, strerror(errno));
 
 		ret = setns(fd, 0);
-		TEST_CHECK(ret == -1 && errno == EPERM, "setns() should fail with EPERM, "
+		TEST_CHECK(ret == -1 && errno == EACCES, "setns() should fail with EACCES, "
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
-		ret = setns(fd, CLONE_NEWLSM);
-		TEST_CHECK(ret == -1 && errno == EPERM, "setns() should fail with EPERM, "
+		ret = setns(fd, CLONE_NEWUSER);
+		TEST_CHECK(ret == -1 && errno == EACCES, "setns() should fail with EACCES, "
 			   "ret = %d, errno = %d: %s", ret, errno, strerror(errno));
 
 		/* try entering the namespace having mapped label */
@@ -108,10 +108,11 @@ void main_outside_ns(void)
 		}
 
 		close(fd);
-		exit(0);
+		exit(test_fails);
 	}
 
 	waitpid(child, &status, 0);
+	test_fails += status;
 
 	test_sync(0);
 }

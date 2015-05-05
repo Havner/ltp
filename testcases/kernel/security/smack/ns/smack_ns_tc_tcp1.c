@@ -112,8 +112,8 @@ void main_inside_ns(void)
 	sfd = create_client_socket();
 	test_sync(2);
 	ret = connect(sfd, (struct sockaddr *)&svaddr, sizeof(svaddr));
-	TEST_CHECK(env_id & TEST_ENV_SMACK_NS ? ret == -1 : ret != -1,
-	           "connect(): %s", strerror(errno));
+	TEST_CHECK((env_id & TEST_ENV_NS_MASK) == TEST_ENV_NS_SMACK ?
+		   ret == -1 : ret != -1, "connect(): %s", strerror(errno));
 	close(sfd);
 
 	/*
@@ -161,10 +161,12 @@ void main_inside_ns(void)
 	 * Socket relabeling inside NS:
 	 * Try to set IPIN label to an unmapped label
 	 */
-	int exp_ret1[] = { 0, -1, -1, -1,
-			  -1, -1, -1, -1 };
-	int exp_errno1[] = {    0, EPERM, EBADR, EBADR,
-			    EPERM, EPERM, EPERM, EPERM};
+	int exp_ret1[] = { 0, -1,
+			  -1, -1,
+			  -1, -1 };
+	int exp_errno1[] = {    0, EPERM,
+			    EPERM, EPERM,
+			    EBADR, EPERM };
 	/* IPIN */
 	errno = 0;
 	ret = smack_set_fd_label(sfd, SERVER_UNMAPPED, SMACK_LABEL_IPIN);
@@ -181,10 +183,12 @@ void main_inside_ns(void)
 	 * Socket relabeling inside NS:
 	 * Set IPIN label to a mapped label
 	 */
-	int exp_ret2[] = { 0, -1,  0,  0,
-			  -1, -1, -1, -1 };
-	int exp_errno2[] = {    0, EPERM,     0,     0,
-			    EPERM, EPERM, EPERM, EPERM };
+	int exp_ret2[] = { 0, -1,
+			  -1, -1,
+			   0, -1 };
+	int exp_errno2[] = {    0, EPERM,
+			    EPERM, EPERM,
+				0, EPERM };
 	/* IPIN */
 	errno = 0;
 	ret = smack_set_fd_label(sfd, LA(SERVER1), SMACK_LABEL_IPIN);
@@ -266,8 +270,9 @@ void main_outside_ns(void)
 	 * unmapped inside namespace - connecting should not pass in a
 	 * namespace.
 	 */
-	int exp_errno1[] = {0, 0, EAGAIN, EAGAIN,
-			    0, 0, EAGAIN, EAGAIN};
+	int exp_errno1[] = {     0,      0,
+			         0,      0,
+			    EAGAIN, EAGAIN };
 	ret = smack_set_fd_label(svsock, SERVER_UNMAPPED, SMACK_LABEL_IPIN);
 	TEST_CHECK(ret == 0, "smack_set_fd_label(): %s", strerror(errno));
 	ret = smack_set_fd_label(svsock, SERVER_UNMAPPED, SMACK_LABEL_IPOUT);

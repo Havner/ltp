@@ -175,10 +175,12 @@ void main_inside_ns(void)
 	 * Scenario 1:
 	 * simple mount tmpfs
 	 */
-	int expected_ret1[] = { 0,  0,  0,  0,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno1[] = {    0,     0,     0,     0,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret1[] = { 0, -1,
+				0, -1,
+				0, -1 };
+	int expected_errno1[] = {0, EPERM,
+				 0, EPERM,
+				 0, EPERM };
 	errno = 0;
 	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags, NULL);
 	TEST_CHECK(ret == expected_ret1[env_id] && errno == expected_errno1[env_id],
@@ -191,10 +193,12 @@ void main_inside_ns(void)
 	 * Scenario 2:
 	 * mount tmpfs with mapped labels
 	 */
-	int expected_ret2[] = { 0, -1,  0,  0,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno2[] = {    0, EPERM,     0,     0,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret2[] = { 0, -1,
+			       -1, -1,
+				0, -1 };
+	int expected_errno2[] = {    0, EPERM,
+				 EPERM, EPERM,
+				     0, EPERM };
 	sprintf(buf, "smackfsdef=%s", LA(LABEL));
 	errno = 0;
 	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags, buf);
@@ -209,10 +213,12 @@ void main_inside_ns(void)
 	 * Scenario 3:
 	 * mount tmpfs with unmapped labels
 	 */
-	int expected_ret3[] = { 0, -1, -1, -1,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno3[] = {    0, EPERM, EBADR, EBADR,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret3[] = { 0, -1,
+			       -1, -1,
+			       -1 , -1 };
+	int expected_errno3[] = {    0, EPERM,
+				 EPERM, EPERM,
+				 EBADR, EPERM };
 	sprintf(buf, "smackfsdef=%s", UNMAPPED);
 	errno = 0;
 	ret = mount("tmpfs", test_dirs[0].path, "tmpfs", mount_flags, buf);
@@ -230,7 +236,7 @@ void main_inside_ns(void)
 	 * - mounting with smack* options requires CAP_MAC_ADMIN
 	 */
 	// TODO: The first three can be overcome to test the fourth.
-	if (env_id != 0 && env_id != 2)
+	if (env_id != 0)
 		goto finish;
 
 	/* no point to continue if we can't prepare loopback device */
@@ -243,10 +249,12 @@ void main_inside_ns(void)
 	 * Scenario 4:
 	 * smackfsdef with mapped label
 	 */
-	int expected_ret4[] = { 0, -1,  0, -1,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno4[] = {    0, EPERM,     0, EPERM,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret4[] = { 0, -1,
+			       -1, -1,
+			       -1, -1 };
+	int expected_errno4[] = {    0, EPERM,
+				 EPERM, EPERM,
+				 EPERM, EPERM };
 	sprintf(buf, "smackfsdef=%s", LA(LABEL));
 	errno = 0;
 	ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);
@@ -269,10 +277,12 @@ void main_inside_ns(void)
 	 * Scenario 5:
 	 * smackfsdef with unmapped label
 	 */
-	int expected_ret5[] = { 0, -1, -1, -1,   /* UID = 0 */
-			       -1, -1, -1, -1 }; /* UID = 1000 */
-	int expected_errno5[] = {    0, EPERM, EBADR, EPERM,   /* UID = 0 */
-				 EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+	int expected_ret5[] = { 0, -1,
+			       -1, -1,
+			       -1, -1 };
+	int expected_errno5[] = {    0, EPERM,
+				 EPERM, EPERM,
+				 EPERM, EPERM };
 	sprintf(buf, "smackfsdef=%s", UNMAPPED);
 	errno = 0;
 	ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);
@@ -295,10 +305,12 @@ void main_inside_ns(void)
 	 * mount using remainging mount options
 	 */
 	for (i = 0; i < ARRAY_SIZE(mount_opts); ++i) {
-		int expected_ret4[] = { 0, -1,  0, -1,   /* UID = 0 */
-				       -1, -1, -1, -1 }; /* UID = 1000 */
-		int expected_errno4[] = {    0, EPERM,     0, EPERM,   /* UID = 0 */
-		                         EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+		int expected_ret4[] = { 0, -1,
+				       -1, -1,
+				       -1, -1 };
+		int expected_errno4[] = {    0, EPERM,
+					 EPERM, EPERM,
+					 EPERM, EPERM };
 		sprintf(buf, "%s=%s", mount_opts[i], LA(LABEL));
 		errno = 0;
 		ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);
@@ -309,10 +321,12 @@ void main_inside_ns(void)
 			TEST_CHECK(ret == 0, "umount(): %s", strerror(errno));
 		}
 
-		int expected_ret5[] = { 0, -1, -1, -1,   /* UID = 0 */
-				       -1, -1, -1, -1 }; /* UID = 1000 */
-		int expected_errno5[] = {    0, EPERM, EBADR, EPERM,   /* UID = 0 */
-		                         EPERM, EPERM, EPERM, EPERM }; /* UID = 1000 */
+		int expected_ret5[] = { 0, -1,
+				       -1, -1,
+				       -1, -1 };
+		int expected_errno5[] = {    0, EPERM,
+					 EPERM, EPERM,
+					 EPERM, EPERM };
 		sprintf(buf, "%s=%s", mount_opts[i], UNMAPPED);
 		errno = 0;
 		ret = mount(loop_dev, test_dirs[1].path, "ext2", MS_MGC_VAL, buf);

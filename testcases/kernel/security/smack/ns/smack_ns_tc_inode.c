@@ -133,8 +133,9 @@ void main_inside_ns(void)
 	 * Directory access checks
 	 */
 
-	int expected_ret1[] = {0, 0, -1, -1,  /* UID = 0 */
-	                       0, 0, -1, -1}; /* UID = 1000 */
+	int expected_ret1[] = { 0,  0,
+				0,  0,
+			       -1, -1};
 	d = opendir(DIR1);
 	if (expected_ret1[env_id] == 0)
 		TEST_CHECK(d != NULL, strerror(errno));
@@ -142,8 +143,9 @@ void main_inside_ns(void)
 		TEST_CHECK(d == NULL, "opendir() should fail");
 	closedir(d);
 
-	int expected_ret2[] = { 0, -1,  0,  0,  /* UID = 0 */
-	                       -1, -1, -1, -1}; /* UID = 1000 */
+	int expected_ret2[] = { 0, -1,
+			       -1, -1,
+				0, -1 };
 	d = opendir(DIR2);
 	if (expected_ret2[env_id] == 0)
 		TEST_CHECK(d != NULL, strerror(errno));
@@ -160,8 +162,9 @@ void main_inside_ns(void)
 	 * Hard link tests
 	 */
 
-	int expected_ret3[] = { 0, -1,  0,  0,  /* UID = 0 */
-	                       -1, -1, -1, -1}; /* UID = 1000 */
+	int expected_ret3[] = { 0, -1,
+			       -1, -1,
+				0, -1 };
 	ret = link(FILE1, NEW_LINK1);
 	if (expected_ret3[env_id] == 0) {
 		TEST_CHECK(ret == 0, strerror(errno));
@@ -179,8 +182,9 @@ void main_inside_ns(void)
 	 * Rename test
 	 */
 
-	int expected_ret4[] = { 0, -1,  0,  0,  /* UID = 0 */
-	                       -1, -1, -1, -1}; /* UID = 1000 */
+	int expected_ret4[] = { 0, -1,
+			       -1, -1,
+				0, -1 };
 	ret = rename(FILE1, RENAMED_FILE1);
 	if (expected_ret4[env_id] == 0) {
 		TEST_CHECK(ret == 0, strerror(errno));
@@ -199,8 +203,9 @@ void main_inside_ns(void)
 	 * rmdir tests
 	 */
 
-	int expected_ret5[] = { 0, -1,  0,  0,  /* UID = 0 */
-	                       -1, -1, -1, -1}; /* UID = 1000 */
+	int expected_ret5[] = { 0, -1,
+			       -1, -1,
+				0, -1 };
 	ret = rmdir(RMDIR1);
 	if (expected_ret5[env_id] == 0)
 		TEST_CHECK(ret == 0, strerror(errno));
