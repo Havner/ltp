@@ -91,4 +91,6 @@ static inline int safe_strcmp(const char *a, const char *b)
 #define SHARED_OBJECT_LABEL "shared"
 #define MAPPED_LABEL_PREFIX "n_"
 
+#define NON_ROOT_ID 5001
+
 #endif // SMACK_NAMESPACE_FRAMEWORK_COMMON_H

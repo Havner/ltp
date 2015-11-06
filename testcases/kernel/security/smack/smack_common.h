@@ -38,6 +38,7 @@
 #include <sys/stat.h>
 #include <sys/statfs.h>
 #include <sys/statvfs.h>
+#include <linux/limits.h>
 #include <fcntl.h>
 #include <stdint.h>
 
@@ -528,12 +529,15 @@ static inline int smack_revoke_subject(const char* subject)
 }
 
 /*
- * Change Smack's "onlycap" label. Return 0 on success.
+ * Write to Smack common api file. Return 0 on success.
  */
-static inline int smack_set_onlycap(const char* label)
+static inline int smack_set_file(const char* label, const char* name)
 {
 	int fd, ret;
-	fd = open(SMACK_MNT_PATH "onlycap", O_WRONLY);
+	char path[PATH_MAX];
+
+	snprintf(path, PATH_MAX, "%s%s", SMACK_MNT_PATH, name);
+	fd = open(path, O_WRONLY);
 	if (fd == -1)
 		return -1;
 
@@ -546,14 +550,32 @@ static inline int smack_set_onlycap(const char* label)
 }
 
 /*
- * Get Smack's "onlycap" label. Return 0 on success.
+ * Change Smack's "onlycap" label. Return 0 on success.
  */
-static inline int smack_get_onlycap(char** label)
+static inline int smack_set_onlycap(const char* label)
+{
+	return smack_set_file(label, "onlycap");
+}
+
+/*
+ * Change Smack's "relabel-self" label. Return 0 on success.
+ */
+static inline int smack_set_relabel_self(const char* label)
+{
+	return smack_set_file(label, "relabel-self");
+}
+
+/*
+ * Read from Smack common api file. Return 0 on success.
+ */
+static inline int smack_get_file(char** label, const char* name)
 {
 	int fd, ret, i;
 	char value[SMACK_LABEL_MAX_LEN + 1];
+	char path[PATH_MAX];
 
-	fd = open(SMACK_MNT_PATH "onlycap", O_RDONLY);
+	snprintf(path, PATH_MAX, "%s%s", SMACK_MNT_PATH, name);
+	fd = open(path, O_RDONLY);
 	if (fd == -1) {
 		*label = NULL;
 		return -1;
@@ -581,6 +603,22 @@ static inline int smack_get_onlycap(char** label)
 
 	*label = strdup(value);
 	return 0;
+}
+
+/*
+ * Get Smack's "onlycap" label. Return 0 on success.
+ */
+static inline int smack_get_onlycap(char** label)
+{
+	return smack_get_file(label, "onlycap");
+}
+
+/*
+ * Get Smack's "relabel-self" label. Return 0 on success.
+ */
+static inline int smack_get_relabel_self(char** label)
+{
+	return smack_get_file(label, "relabel-self");
 }
 
 /*

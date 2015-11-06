@@ -60,7 +60,6 @@
 #define CHILD_NAMESPACES	0
 #define CHILD_HELPER		1
 
-
 /*
  * Common rules for the test framework and all test cases:
  * * "inside -> _" is needed to do execve() on a testcase binary
@@ -90,7 +89,7 @@ const char* smack_map[][2] = {
 	// to be difficult/impossible.
 	// It would require getting rid of '_' dependency on full
 	// access path to the test binary.
-	{"_",   "floor"},
+	{"_", "floor"},
 
 	{INSIDE_PROC_LABEL, MAPPED_LABEL_PREFIX INSIDE_PROC_LABEL},
 	{OUTSIDE_PROC_LABEL, MAPPED_LABEL_PREFIX OUTSIDE_PROC_LABEL},
@@ -211,20 +210,34 @@ static void write_uid_maps(pid_t pid)
 	FILE *f;
 	char uid_buf[UID_MAPPING_LEN], gid_buf[UID_MAPPING_LEN];
 	char path[MAP_PATH_LEN];
+	char *tmp;
 
+	tmp = uid_buf;
+	tmp += snprintf(tmp, UID_MAPPING_LEN, "%d %d 1\n",
+			args.mapped_uid, args.uid);
+
+	/* map some non-root user */
+	tmp += snprintf(tmp, UID_MAPPING_LEN, "%d %d 1\n",
+			NON_ROOT_ID, args.uid + 1);
+
+	/* also map the namespace root user if the mapped one will not be it */
 	if (args.mapped_uid != 0)
-		snprintf(uid_buf, UID_MAPPING_LEN, "%d %d 1\n%d %d 1",
-		         0, USER_NS_REAL_USER, args.mapped_uid, args.uid);
-	else
-		snprintf(uid_buf, UID_MAPPING_LEN, "%d %d 1",
-		         args.mapped_uid, args.uid);
+		tmp += snprintf(tmp, UID_MAPPING_LEN, "%d %d 1\n",
+				0, args.uid + 2);
 
+	tmp = gid_buf;
+	tmp += snprintf(tmp, UID_MAPPING_LEN, "%d %d 1\n",
+			args.mapped_gid, args.gid);
+
+	/* map some non-root group */
+	tmp += snprintf(tmp, UID_MAPPING_LEN, "%d %d 1\n",
+			NON_ROOT_ID, args.gid + 1);
+
+	/* also map the namespace root group if the mapped one will not be it */
 	if (args.mapped_gid != 0)
-		snprintf(gid_buf, UID_MAPPING_LEN, "%d %d 1\n%d %d 1",
-		         0, USER_NS_REAL_USER, args.mapped_gid, args.gid);
+		tmp += snprintf(tmp, UID_MAPPING_LEN, "%d %d 1\n",
+				0, args.gid + 2);
 	else
-		snprintf(gid_buf, UID_MAPPING_LEN, "%d %d 1",
-		         args.mapped_gid, args.gid);
 
 #ifdef PRINT_DEBUG
 	printf("UID map:\n%s\n", uid_buf);
@@ -366,7 +379,7 @@ int main(int argc, char *argv[])
 	remove_directory("tmp");
 	if (mkdir("tmp", S_IRWXU | S_IRWXG | S_IRWXO) != 0)
 		ERR_EXIT("mkdir()");
-	if (smack_set_file_label("tmp", "shared", SMACK_LABEL_ACCESS, 0) != 0)
+	if (smack_set_file_label("tmp", SHARED_OBJECT_LABEL, SMACK_LABEL_ACCESS, 0) != 0)
 		ERR_EXIT("smack_set_file_label()");
 
 	/* first fork (helper) */

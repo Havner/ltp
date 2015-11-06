@@ -19,7 +19,8 @@
 #
 # Smack namespace test launcher
 #
-# Author: Michal Witanowski <m.witanowski@samsung.com>
+# Authors: Michal Witanowski <m.witanowski@samsung.com>
+#          Lukasz Pawelczyk <l.pawelczyk@samsung.com>
 #
 
 if [[ $EUID -ne 0 ]]; then
@@ -34,12 +35,14 @@ else
 	TESTS="$@"
 fi
 
-COMMANDS='./smack_ns_launch --uid=0
+COMMANDS='
+./smack_ns_launch --uid=0
 ./smack_ns_launch --uid=1000
 ./smack_ns_launch -I --uid=1000 --mapped-uid=0
 ./smack_ns_launch -I --uid=1000 --mapped-uid=5000
 ./smack_ns_launch -IS --uid=1000 --mapped-uid=0
-./smack_ns_launch -IS --uid=1000 --mapped-uid=5000'
+./smack_ns_launch -IS --uid=1000 --mapped-uid=5000
+'
 
 FAILED=""
 for T in $TESTS; do
