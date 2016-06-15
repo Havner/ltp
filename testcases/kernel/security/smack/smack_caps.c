@@ -30,8 +30,7 @@
 
 #include "test.h"
 #include "usctest.h"
-#include "safe_macros.h"
-#include "safe_file_ops.h"
+#include "tst_safe_macros.h"
 #include "smack_common.h"
 
 #define CLEANUP cleanup
@@ -67,7 +66,7 @@ int main(int argc, char *argv[])
 			     SMACK_LABEL_MMAP, SMACK_LABEL_TRANSMUTE};
 	const char* label_values[] = {LABEL1, LABEL1, LABEL1, "TRUE"};
 
-	tst_require_root(NULL);
+	tst_require_root();
 	if (verify_smackmnt() != 0)
 		tst_brkm(TCONF, NULL, "Smack is not enabled");
 	setup();

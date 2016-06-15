@@ -33,7 +33,7 @@
 #include <string.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <attr/xattr.h>
+#include <sys/xattr.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>

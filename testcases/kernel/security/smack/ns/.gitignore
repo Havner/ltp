@@ -17,3 +17,4 @@
 /smack_ns_tc_tcp2
 /smack_ns_tc_udp
 /smack_ns_tc_ambient
+/smack_ns_tc_relabel_self

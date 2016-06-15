@@ -28,8 +28,7 @@
 #include <sys/stat.h>
 #include "test.h"
 #include "usctest.h"
-#include "safe_macros.h"
-#include "safe_file_ops.h"
+#include "tst_safe_macros.h"
 #include "smack_common.h"
 
 char *TCID = "smack_rule_simple";
@@ -201,7 +200,7 @@ int main(int argc, char *argv[])
 	UNUSED(argc);
 	UNUSED(argv);
 
-	tst_require_root(NULL);
+	tst_require_root();
 	if (verify_smackmnt() != 0)
 		tst_brkm(TCONF, NULL, "Smack is not enabled");
 
